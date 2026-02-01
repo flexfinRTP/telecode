@@ -1,0 +1,33 @@
+# ============================================
+# TeleCode v0.1 - Remote Cursor Commander
+# Python Dependencies
+# ============================================
+
+# Telegram Bot Framework (Async)
+python-telegram-bot[all]==22.0
+
+# Voice Processing
+SpeechRecognition==3.10.4
+pydub==0.25.1
+
+# GUI Configuration
+customtkinter==5.2.2
+
+# Environment Variables
+python-dotenv==1.0.1
+
+# System Utilities (cross-platform)
+psutil==5.9.8
+
+# Secure Token Storage
+cryptography>=42.0.0
+
+# System Tray Icon
+pystray>=0.19.0
+pillow>=10.0.0
+
+# ============================================
+# Build Dependencies (optional, for packaging)
+# ============================================
+# pyinstaller>=6.3.0
+

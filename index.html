@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TeleCode - Remote Cursor Commander</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0a0e14;
+            --bg-card: #111820;
+            --bg-terminal: #0d1117;
+            --accent-green: #39ff14;
+            --accent-cyan: #00e5ff;
+            --accent-orange: #ff9f1c;
+            --text-primary: #e6edf3;
+            --text-muted: #8b949e;
+            --border-subtle: #21262d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated grid background */
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(57, 255, 20, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(57, 255, 20, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: gridMove 20s linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        @keyframes gridMove {
+            0% { background-position: 0 0; }
+            100% { background-position: 50px 50px; }
+        }
+
+        /* Glow orbs */
+        .glow-orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: 0.15;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .glow-orb.green {
+            width: 400px;
+            height: 400px;
+            background: var(--accent-green);
+            top: -100px;
+            right: -100px;
+        }
+
+        .glow-orb.cyan {
+            width: 300px;
+            height: 300px;
+            background: var(--accent-cyan);
+            bottom: 10%;
+            left: -50px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            padding: 4rem 0 3rem;
+        }
+
+        .logo {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 3.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+            letter-spacing: -2px;
+        }
+
+        .tagline {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .version-badge {
+            display: inline-block;
+            background: var(--bg-card);
+            border: 1px solid var(--accent-green);
+            color: var(--accent-green);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 100px;
+            margin-top: 1rem;
+        }
+
+        /* Terminal card */
+        .terminal-card {
+            background: var(--bg-terminal);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 2rem 0;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .terminal-header {
+            background: var(--bg-card);
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .terminal-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .terminal-dot.red { background: #ff5f56; }
+        .terminal-dot.yellow { background: #ffbd2e; }
+        .terminal-dot.green { background: #27ca40; }
+
+        .terminal-title {
+            margin-left: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .terminal-body {
+            padding: 1.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.8;
+        }
+
+        .terminal-line {
+            display: flex;
+            flex-wrap: wrap;
+            margin-bottom: 0.5rem;
+        }
+
+        .terminal-prompt {
+            color: var(--accent-green);
+            margin-right: 0.5rem;
+        }
+
+        .terminal-command {
+            color: var(--text-primary);
+        }
+
+        .terminal-output {
+            color: var(--text-muted);
+            padding-left: 1.5rem;
+        }
+
+        /* Install button */
+        .install-section {
+            text-align: center;
+            padding: 2rem 0;
+        }
+
+        .install-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            background: linear-gradient(135deg, var(--accent-green), #2eb82e);
+            color: var(--bg-dark);
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 600;
+            padding: 1rem 2.5rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 30px rgba(57, 255, 20, 0.3);
+        }
+
+        .install-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 50px rgba(57, 255, 20, 0.5);
+        }
+
+        .install-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .install-note {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        /* Download buttons grid */
+        .download-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            font-weight: 500;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .download-btn:hover {
+            border-color: var(--accent-green);
+            background: rgba(57, 255, 20, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .download-btn.primary {
+            background: linear-gradient(135deg, var(--accent-green), #2eb82e);
+            color: var(--bg-dark);
+            font-weight: 600;
+            border: none;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.2);
+        }
+
+        .download-btn.primary:hover {
+            box-shadow: 0 0 40px rgba(57, 255, 20, 0.4);
+        }
+
+        .download-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .platform-icon {
+            font-size: 1.25rem;
+        }
+
+        /* Features grid */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 3rem 0;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .feature-card:hover {
+            border-color: var(--accent-green);
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .feature-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-desc {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        /* Open source section */
+        .open-source {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            margin: 3rem 0;
+        }
+
+        .open-source h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .open-source p {
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.7;
+        }
+
+        .source-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--accent-cyan);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .source-link:hover {
+            color: var(--accent-green);
+        }
+
+        .source-link svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Checksum section */
+        .checksum-section {
+            background: var(--bg-terminal);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+
+        .checksum-section h3 {
+            font-size: 1.1rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .checksum-section h3 svg {
+            width: 20px;
+            height: 20px;
+            color: var(--accent-orange);
+        }
+
+        .checksum-explain {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            line-height: 1.7;
+            margin-bottom: 1.5rem;
+        }
+
+        .checksum-box {
+            background: var(--bg-dark);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .checksum-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent-orange);
+            margin-bottom: 0.5rem;
+        }
+
+        .checksum-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-primary);
+            word-break: break-all;
+            user-select: all;
+        }
+
+        .checksum-howto {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            background: var(--bg-dark);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+
+        .checksum-howto .cmd {
+            color: var(--accent-cyan);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 3rem 0 2rem;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        footer a {
+            color: var(--accent-green);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .logo {
+                font-size: 2.5rem;
+            }
+
+            .terminal-body {
+                font-size: 0.75rem;
+                padding: 1rem;
+            }
+
+            .install-btn {
+                font-size: 1rem;
+                padding: 0.875rem 2rem;
+            }
+
+            .checksum-value {
+                font-size: 0.7rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+    <div class="glow-orb green"></div>
+    <div class="glow-orb cyan"></div>
+
+    <div class="container">
+        <header>
+            <h1 class="logo">&gt;_TeleCode</h1>
+            <p class="tagline">Voice-to-Code, From Anywhere</p>
+            <p style="color: var(--text-muted); font-size: 0.95rem;">Control Cursor AI from your phone via Telegram — uses your existing plan, no API costs</p>
+            <span class="version-badge">v0.1.1 — Download Now!</span>
+        </header>
+
+        <!-- Value Props -->
+        <div style="display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; margin: 1.5rem 0; text-align: center;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--accent-green);">✓</span>
+                <span style="color: var(--text-muted); font-size: 0.9rem;">Voice-to-code from your phone</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--accent-green);">✓</span>
+                <span style="color: var(--text-muted); font-size: 0.9rem;">Uses your existing Cursor plan</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--accent-green);">✓</span>
+                <span style="color: var(--text-muted); font-size: 0.9rem;">No API costs</span>
+            </div>
+        </div>
+
+        <!-- Quick install terminal -->
+        <div class="terminal-card">
+            <div class="terminal-header">
+                <span class="terminal-dot red"></span>
+                <span class="terminal-dot yellow"></span>
+                <span class="terminal-dot green"></span>
+                <span class="terminal-title">bash — 80x24</span>
+            </div>
+            <div class="terminal-body">
+                <div class="terminal-line">
+                    <span class="terminal-prompt">$</span>
+                    <span class="terminal-command">git clone https://github.com/flexfinrtp/telecode.git</span>
+                </div>
+                <div class="terminal-line">
+                    <span class="terminal-prompt">$</span>
+                    <span class="terminal-command">cd telecode && ./setup.sh</span>
+                </div>
+                <div class="terminal-output">✓ Python 3.10+ found</div>
+                <div class="terminal-output">✓ Dependencies installed</div>
+                <div class="terminal-output">✓ Configuration GUI launched</div>
+                <div class="terminal-line" style="margin-top: 0.5rem;">
+                    <span class="terminal-prompt">$</span>
+                    <span class="terminal-command" style="animation: blink 1s infinite;">_</span>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            @keyframes blink {
+                0%, 50% { opacity: 1; }
+                51%, 100% { opacity: 0; }
+            }
+        </style>
+
+        <!-- Install button -->
+        <section class="install-section">
+            <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">📥 Download Installer</h2>
+            
+            <div class="download-grid">
+                <a href="https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_Setup_v0.1.1_Windows.exe" class="download-btn primary">
+                    <span class="platform-icon">🪟</span>
+                    Windows Installer
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                    </svg>
+                </a>
+                <a href="https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.1_macOS.dmg" class="download-btn">
+                    <span class="platform-icon">🍎</span>
+                    macOS DMG
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                    </svg>
+                </a>
+                <a href="https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.1_Linux.tar.gz" class="download-btn">
+                    <span class="platform-icon">🐧</span>
+                    Linux tar.gz
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                    </svg>
+                </a>
+            </div>
+            
+            <p class="install-note">
+                📦 No Python required — everything bundled! • 
+                <a href="https://github.com/flexfinRTP/telecode/releases" style="color: var(--accent-green);">All Releases</a>
+            </p>
+            
+            <p style="margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-muted);">
+                v0.1.1 • ~50 MB • Works on Windows 10+, macOS 10.15+, Linux (Ubuntu 20.04+)
+            </p>
+        </section>
+
+        <!-- Features -->
+        <section class="features">
+            <div class="feature-card" style="border-color: var(--accent-green); background: linear-gradient(135deg, rgba(57, 255, 20, 0.05), transparent);">
+                <div class="feature-icon">🎤</div>
+                <h3 class="feature-title">Voice-to-Code</h3>
+                <p class="feature-desc">Speak your prompts from anywhere. Voice notes become AI commands — 100% free via Google Speech.</p>
+            </div>
+            <div class="feature-card" style="border-color: var(--accent-cyan); background: linear-gradient(135deg, rgba(0, 229, 255, 0.05), transparent);">
+                <div class="feature-icon">💰</div>
+                <h3 class="feature-title">Zero API Costs</h3>
+                <p class="feature-desc">Uses your existing Cursor subscription. No OpenAI API key needed — Cursor CLI handles it all.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🌍</div>
+                <h3 class="feature-title">Code From Anywhere</h3>
+                <p class="feature-desc">On a train? At the gym? Control your code from your phone. Works even when laptop is locked.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📱</div>
+                <h3 class="feature-title">Just Use Telegram</h3>
+                <p class="feature-desc">No custom app. Works on any device with Telegram installed.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🛡️</div>
+                <h3 class="feature-title">Zero-Trust Security</h3>
+                <p class="feature-desc">User auth, filesystem sandbox, command whitelist, full audit logging.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🤖</div>
+                <h3 class="feature-title">Model Selection</h3>
+                <p class="feature-desc">Choose your AI: Opus, Sonnet, Haiku, Gemini, or GPT. Switch anytime with /model.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">✅</div>
+                <h3 class="feature-title">Cursor-Style Actions</h3>
+                <p class="feature-desc">Keep All, Undo All, Continue — inline buttons match Cursor's workflow.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔓</div>
+                <h3 class="feature-title">Open Source</h3>
+                <p class="feature-desc">MIT licensed. Inspect every line, verify there's no backdoors, modify freely.</p>
+            </div>
+        </section>
+
+        <!-- Open Source -->
+        <section class="open-source">
+            <h2>
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+                100% Open Source
+            </h2>
+            <p>
+                TeleCode is fully open source under the MIT License. 
+                You can inspect every line of code, verify there's no backdoors, 
+                and modify it to suit your needs. Trust, but verify.
+            </p>
+            <a href="https://github.com/flexfinrtp/telecode" class="source-link">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+                View source on GitHub →
+            </a>
+        </section>
+
+        <!-- Checksum verification -->
+        <section class="checksum-section">
+            <h3>
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+                </svg>
+                Verify Your Download
+            </h3>
+            <p class="checksum-explain">
+                <strong>What's a checksum?</strong> It's like a fingerprint for a file. 
+                After downloading, you can run a command to generate your file's fingerprint 
+                and compare it to ours. If they match, your download is authentic and wasn't 
+                tampered with during transfer. If they don't match, delete the file and re-download.
+            </p>
+            
+            <div class="checksum-box">
+                <div class="checksum-label">SHA-256 Checksum (main.py)</div>
+                <div class="checksum-value" id="checksum-main">
+                    8585DFBAF8A84C1E1C301261A47FB613D9DDB1ADBF5FD38DDBA86082C0E0E260
+                </div>
+            </div>
+
+            <div class="checksum-box">
+                <div class="checksum-label">SHA-256 Checksum (requirements.txt)</div>
+                <div class="checksum-value" id="checksum-req">
+                    DC26B5BFD5731A02F39A5F54CA9537D1A8DA9CD62660F6E4575B4B918A608A3E
+                </div>
+            </div>
+
+            <div class="checksum-howto">
+                <strong>How to verify (after download):</strong><br><br>
+                <span class="cmd"># Windows (PowerShell)</span><br>
+                Get-FileHash main.py -Algorithm SHA256<br><br>
+                <span class="cmd"># macOS / Linux</span><br>
+                sha256sum main.py
+            </div>
+        </section>
+
+        <footer>
+            <p>
+                Made with ❤️ for developers who code from anywhere<br>
+                Voice-to-code • Works on any device • Uses your existing Cursor plan<br><br>
+                <a href="https://github.com/flexfinrtp/telecode">GitHub</a> • 
+                <a href="https://github.com/flexfinrtp/telecode/blob/main/LICENSE">MIT License</a> • 
+                <a href="https://github.com/flexfinrtp/telecode/blob/main/docs/SECURITY.md">Security</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>
+

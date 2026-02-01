@@ -1,0 +1,29 @@
+# GitHub Pages Configuration for TeleCode
+# =========================================
+# This file configures Jekyll for GitHub Pages.
+# To enable GitHub Pages:
+# 1. Go to your GitHub repo Settings → Pages
+# 2. Under "Source", select "Deploy from a branch"
+# 3. Choose "main" branch and "/ (root)" folder
+# 4. Click Save
+# 5. Your site will be live at: https://yourusername.github.io/telecode/
+
+theme: null
+title: TeleCode - Remote Cursor Commander
+description: Control your Cursor IDE from Telegram
+
+# Exclude files from the build
+exclude:
+  - src/
+  - tests/
+  - venv/
+  - "*.py"
+  - "*.bat"
+  - "*.sh"
+  - requirements.txt
+  - .env
+  - .env.example
+  - env.example
+  - "*.log"
+  - __pycache__/
+

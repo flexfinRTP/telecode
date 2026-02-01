@@ -1,0 +1,203 @@
+# ============================================
+# TeleCode GitHub Actions - Build & Release
+# Builds installers for Windows, macOS, Linux
+# ============================================
+
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 0.1.1)'
+        required: true
+        default: '0.1.1'
+
+jobs:
+  # ==========================================
+  # Windows Build
+  # ==========================================
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable
+        run: |
+          pyinstaller --clean --noconfirm build/telecode_windows.spec
+
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeleCode-Windows
+          path: dist/TeleCode.exe
+
+  # ==========================================
+  # macOS Build
+  # ==========================================
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+          brew install create-dmg
+
+      - name: Build app bundle
+        run: |
+          pyinstaller --clean --noconfirm build/telecode_macos.spec
+
+      - name: Create DMG
+        run: |
+          VERSION="${{ github.event.inputs.version || '0.1.1' }}"
+          create-dmg \
+            --volname "TeleCode ${VERSION}" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "TeleCode.app" 150 185 \
+            --hide-extension "TeleCode.app" \
+            --app-drop-link 450 185 \
+            --no-internet-enable \
+            "dist/TeleCode_v${VERSION}_macOS.dmg" \
+            "dist/TeleCode.app" || true
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeleCode-macOS
+          path: dist/*.dmg
+
+      - name: Upload macOS App (fallback)
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeleCode-macOS-App
+          path: dist/TeleCode.app
+
+  # ==========================================
+  # Linux Build
+  # ==========================================
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable
+        run: |
+          pyinstaller --clean --noconfirm build/telecode_linux.spec
+
+      - name: Create distribution package
+        run: |
+          VERSION="${{ github.event.inputs.version || '0.1.1' }}"
+          DIST_DIR="dist/TeleCode_v${VERSION}_Linux"
+          mkdir -p "$DIST_DIR/docs"
+          cp dist/TeleCode "$DIST_DIR/"
+          cp README.md LICENSE "$DIST_DIR/"
+          cp docs/USER_GUIDE.md docs/QUICK_START.md "$DIST_DIR/docs/"
+          chmod +x "$DIST_DIR/TeleCode"
+          cd dist && tar -czvf "TeleCode_v${VERSION}_Linux.tar.gz" "TeleCode_v${VERSION}_Linux"
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeleCode-Linux
+          path: dist/*.tar.gz
+
+  # ==========================================
+  # Create GitHub Release
+  # ==========================================
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Display structure
+        run: ls -R
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            TeleCode-Windows/TeleCode.exe
+            TeleCode-macOS/*.dmg
+            TeleCode-Linux/*.tar.gz
+          body: |
+            ## TeleCode ${{ github.ref_name }}
+            
+            ### Downloads
+            
+            | Platform | Download |
+            |----------|----------|
+            | Windows  | `TeleCode.exe` |
+            | macOS    | `TeleCode_v*_macOS.dmg` |
+            | Linux    | `TeleCode_v*_Linux.tar.gz` |
+            
+            ### Installation
+            
+            **Windows:** Run `TeleCode.exe` and follow the setup wizard.
+            
+            **macOS:** Open the DMG, drag TeleCode to Applications.
+            
+            **Linux:** Extract and run `./install.sh`
+            
+            ### Getting Started
+            
+            1. Get a Telegram Bot Token from [@BotFather](https://t.me/BotFather)
+            2. Get your User ID from [@userinfobot](https://t.me/userinfobot)
+            3. Launch TeleCode and enter your credentials
+            4. Select your development folder
+            5. Start coding remotely!
+            
+            See [User Guide](https://github.com/flexfinRTP/telecode/blob/main/docs/USER_GUIDE.md) for detailed instructions.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
