@@ -26,6 +26,10 @@ cryptography>=42.0.0
 pystray>=0.19.0
 pillow>=10.0.0
 
+# Keyboard/UI Automation (for Cursor Composer control)
+pyautogui>=0.9.54
+pyperclip>=1.8.2
+
 # ============================================
 # Build Dependencies (optional, for packaging)
 # ============================================

@@ -293,46 +293,46 @@ class CLIWrapper:
         model: Optional[str] = None
     ) -> CommandResult:
         """
-        Execute an AI prompt via Cursor CLI.
+        Execute an AI prompt via Cursor Agent Bridge.
         
-        This is the core "headless" AI feature that works on locked screens.
+        This opens Cursor with the workspace and saves the prompt
+        to .telecode/prompt.md for the user to execute manually.
         
-        Cursor CLI Modes (v2.2+):
-        1. `cursor agent` - Interactive terminal agent (stdin/stdout)
-        2. `cursor <folder>` - Open folder in Cursor GUI
-        3. `cursor -` - Read content from stdin
-        
-        We use `cursor agent` with stdin piping for headless operation.
+        NOTE: Cursor CLI doesn't have a true headless AI mode.
+        The user must trigger AI manually in Cursor (Ctrl+I).
+        Use CursorAgentBridge directly for full control.
         
         Args:
             prompt: The AI prompt to execute
             workspace: Optional workspace path (defaults to current_dir)
-            model: Optional model ID to use (e.g., "claude-opus-4.5")
+            model: Optional model ID to use (for display only)
             
         Returns:
-            CommandResult with AI operation output
+            CommandResult with operation output
         """
+        from .cursor_agent import get_agent_for_workspace
+        
         if not self.cursor_path:
             return CommandResult(
                 success=False,
                 stdout="",
                 stderr="Cursor CLI not found. Please install Cursor and add it to PATH.",
                 return_code=-1,
-                command="cursor agent"
+                command="cursor"
             )
         
-        workspace = workspace or str(self.current_dir)
+        workspace_path = Path(workspace) if workspace else self.current_dir
         
         # Validate workspace path
         try:
-            self.sentinel.validate_path(workspace)
+            self.sentinel.validate_path(str(workspace_path))
         except SecurityError as e:
             return CommandResult(
                 success=False,
                 stdout="",
                 stderr=str(e),
                 return_code=-1,
-                command="cursor agent"
+                command="cursor"
             )
         
         # =============================================
@@ -346,13 +346,12 @@ class CLIWrapper:
         if not scan_result.is_safe:
             logger.warning(f"Prompt blocked by PromptGuard: {scan_result.threat_level.name}")
             
-            # Return security warning to user
             return CommandResult(
                 success=False,
                 stdout="",
                 stderr=scan_result.warning_message or "Prompt blocked for security reasons.",
-                return_code=-2,  # Special code for security block
-                command="cursor agent (BLOCKED)"
+                return_code=-2,
+                command="cursor (BLOCKED)"
             )
         
         # Layer 2: Additional sanitization
@@ -364,149 +363,51 @@ class CLIWrapper:
                 stdout="",
                 stderr="Prompt was empty after security sanitization.",
                 return_code=-1,
-                command="cursor agent"
+                command="cursor"
             )
         
-        # Layer 3: Limit prompt length to prevent buffer overflow attacks
+        # Layer 3: Limit prompt length
         MAX_PROMPT_LENGTH = 10000
         if len(safe_prompt) > MAX_PROMPT_LENGTH:
             safe_prompt = safe_prompt[:MAX_PROMPT_LENGTH]
             logger.warning(f"Prompt truncated to {MAX_PROMPT_LENGTH} characters")
         
         # =============================================
-        # CURSOR CLI EXECUTION
+        # USE CURSOR AGENT BRIDGE
         # =============================================
-        # 
-        # Method: Use `cursor agent` with stdin piping
-        # This allows headless AI execution without GUI interaction
-        #
-        # The agent reads the prompt from stdin and processes it
-        # against the workspace files.
-        
-        # Prepare the full prompt with workspace context
-        full_prompt = f"Working in: {workspace}\n\n{safe_prompt}"
-        
-        # Log model info if specified
-        if model:
-            from .model_config import get_model_by_id
-            validated_model = get_model_by_id(model)
-            if validated_model:
-                logger.info(f"Requesting model: {validated_model.display_name}")
-                # Note: Model selection is handled by Cursor's settings, not CLI flags
-        
-        command_str = f"cursor agent (stdin: {safe_prompt[:50]}...)"
-        logger.info(f"Executing: {command_str} in {workspace}")
         
         try:
-            # SEC-001: Use safe environment variables only
-            safe_env = self.sentinel.get_safe_env()
+            agent = get_agent_for_workspace(workspace_path)
+            result = agent.send_prompt(safe_prompt, model=model)
             
-            # Method 1: Try cursor agent with stdin
-            result = subprocess.run(
-                [self.cursor_path, "agent"],
-                cwd=str(workspace),
-                input=full_prompt,
-                capture_output=True,
-                text=True,
-                timeout=self.AI_TIMEOUT,
-                env=safe_env
-            )
-            
-            # Check if agent mode worked
-            if result.returncode == 0 and result.stdout.strip():
-                return CommandResult(
-                    success=True,
-                    stdout=result.stdout[:self.MAX_OUTPUT_SIZE],
-                    stderr=result.stderr[:self.MAX_OUTPUT_SIZE] if result.stderr else "",
-                    return_code=result.returncode,
-                    command=command_str
-                )
-            
-            # Method 2: If agent returns empty, try opening Cursor with folder
-            # This is a fallback that opens the GUI but still works when locked (via TSCON)
-            if not result.stdout.strip():
-                logger.info("cursor agent returned empty, trying folder open method")
-                
-                # Open Cursor with the workspace folder
-                open_result = subprocess.run(
-                    [self.cursor_path, str(workspace)],
-                    cwd=str(workspace),
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    env=safe_env
-                )
-                
-                # Create a prompt file for the user to see
-                prompt_file = Path(workspace) / ".telecode_prompt.md"
-                try:
-                    prompt_content = f"""# TeleCode AI Prompt
-
-**Received at:** {subprocess.run(['date', '/t'], capture_output=True, text=True, shell=True).stdout.strip() if os.name == 'nt' else 'now'}
-
-## Prompt
-{safe_prompt}
-
----
-*This file was created by TeleCode. You can delete it after processing.*
-*Open Cursor Composer (Ctrl+I) and paste/reference this prompt.*
-"""
-                    with open(prompt_file, 'w', encoding='utf-8') as f:
-                        f.write(prompt_content)
-                    
-                    return CommandResult(
-                        success=True,
-                        stdout=f"📂 Opened Cursor with workspace: {workspace}\n📝 Prompt saved to: .telecode_prompt.md\n\nOpen Cursor Composer (Ctrl+I) to execute the prompt.",
-                        stderr="",
-                        return_code=0,
-                        command="cursor <folder> (GUI mode)"
-                    )
-                except Exception as e:
-                    logger.warning(f"Could not create prompt file: {e}")
+            if result.success:
+                instructions = result.data.get("instructions", []) if result.data else []
+                instr_text = "\n".join(instructions)
                 
                 return CommandResult(
                     success=True,
-                    stdout=f"📂 Opened Cursor with workspace: {workspace}\n\n💡 Use Cursor Composer (Ctrl+I) with this prompt:\n\n{safe_prompt[:500]}",
+                    stdout=f"{result.message}\n\n{instr_text}",
                     stderr="",
                     return_code=0,
-                    command="cursor <folder> (GUI mode)"
+                    command="cursor (CursorAgentBridge)"
                 )
-            
-            # Return whatever we got
-            return CommandResult(
-                success=result.returncode == 0,
-                stdout=result.stdout[:self.MAX_OUTPUT_SIZE] if result.stdout else "",
-                stderr=result.stderr[:self.MAX_OUTPUT_SIZE] if result.stderr else "",
-                return_code=result.returncode,
-                command=command_str
-            )
-            
-        except subprocess.TimeoutExpired:
-            logger.error(f"Cursor agent timed out after {self.AI_TIMEOUT}s")
-            return CommandResult(
-                success=False,
-                stdout="",
-                stderr=f"Cursor agent timed out after {self.AI_TIMEOUT} seconds",
-                return_code=-1,
-                command=command_str
-            )
-        except FileNotFoundError:
-            logger.error(f"Cursor not found at: {self.cursor_path}")
-            return CommandResult(
-                success=False,
-                stdout="",
-                stderr="Cursor CLI not found. Please install Cursor and ensure 'cursor' is in PATH.",
-                return_code=-1,
-                command=command_str
-            )
+            else:
+                return CommandResult(
+                    success=False,
+                    stdout="",
+                    stderr=result.error or result.message,
+                    return_code=-1,
+                    command="cursor"
+                )
+                
         except Exception as e:
-            logger.error(f"Cursor agent failed: {e}")
+            logger.error(f"Cursor agent bridge failed: {e}")
             return CommandResult(
                 success=False,
                 stdout="",
                 stderr=f"Cursor execution failed: {str(e)}",
                 return_code=-1,
-                command=command_str
+                command="cursor"
             )
     
     def open_cursor(self, path: Optional[str] = None) -> CommandResult:

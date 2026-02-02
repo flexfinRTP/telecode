@@ -10,6 +10,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.2] - 2026-02-01
+
+### 🤖 AI Control Commands - Full Automated Cursor Integration
+
+Complete rewrite of Cursor integration with **automated keyboard control**.
+Prompts are now SENT DIRECTLY to Cursor Composer - no manual paste needed!
+
+### Added
+
+#### Automated Prompt Delivery
+- **Direct Composer Integration**: Prompts sent via keyboard automation
+- **Zero Manual Steps**: TeleCode opens Cursor → focuses window → types prompt → sends
+- **Works When Locked**: Compatible with TSCON locked sessions on Windows
+
+#### AI Subcommands
+| Command | Description |
+|---------|-------------|
+| `/ai <prompt>` | **Sends prompt directly to Cursor Composer** |
+| `/ai accept [msg]` | Accept and commit all AI changes |
+| `/ai revert` | Discard all AI changes (with confirmation) |
+| `/ai continue <prompt>` | Send follow-up prompt |
+| `/ai stop` | Clear current AI session |
+| `/ai status` | Check agent state and pending changes |
+
+#### Cursor Agent Bridge (`src/cursor_agent.py`)
+- **Keyboard automation** via pyautogui + pyperclip
+- **Window management** to find and focus Cursor
+- Session state persistence
+- Prompt history logging
+- Git-based change tracking
+
+#### New Dependencies
+```
+pyautogui>=0.9.54   # Keyboard automation
+pyperclip>=1.8.2    # Clipboard handling
+```
+
+#### Inline Button Actions
+- **Check Changes** - Quickly see pending modifications
+- **Accept All** - One-click commit
+- **Revert All** - Discard with 2-step confirmation
+- **Continue** - Prompt for follow-up
+
+### Fixed
+- **Cursor CLI**: No longer uses non-existent `cursor agent` command
+- **Manual workflow eliminated**: No need to copy/paste prompts
+- **TSCON compatibility**: Works with locked Windows sessions
+
+### How It Works Now
+```
+1. You send: /ai create a login form
+   ↓
+2. TeleCode:
+   - Opens Cursor (if not running)
+   - Focuses Cursor window
+   - Opens Composer (Ctrl+L)
+   - Pastes your prompt
+   - Presses Enter to send
+   ↓
+3. Cursor AI processes the prompt
+   ↓
+4. You: /ai status → See changes
+5. You: /ai accept → Commit
+6. You: /push → Push to remote
+```
+
+### Security
+- All prompts scanned by PromptGuard before sending
+- Workspace must be in DEV_ROOT sandbox
+- Full audit logging to `.telecode/history.json`
+- Clipboard cleared after use (optional)
+
+---
+
 ## [0.1.1] - 2026-02-01
 
 ### 🔧 Cursor CLI Compatibility Fix + Professional Installers

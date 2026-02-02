@@ -14,6 +14,12 @@ Commands:
   /accept   - Stage and commit all changes
   /revert   - Discard all uncommitted changes
   /ai       - Execute AI prompt via Cursor CLI
+    /ai <prompt>         - Send prompt to Cursor
+    /ai accept [msg]     - Accept and commit all changes
+    /ai revert           - Discard all changes
+    /ai continue <prompt>- Follow-up prompt
+    /ai stop             - Clear session
+    /ai status           - Check agent status
   /cd       - Change current directory
   /ls       - List directory contents
   /read     - Read file contents
@@ -68,6 +74,7 @@ from .model_config import (
     AVAILABLE_MODELS,
     ModelTier
 )
+from .cursor_agent import CursorAgentBridge, get_agent_for_workspace, AgentState
 
 logger = logging.getLogger("telecode.bot")
 
@@ -243,6 +250,9 @@ class TeleCodeBot:
             # Diff expansion callback handler
             CallbackQueryHandler(self._cmd_diff_callback, pattern="^diff_"),
             
+            # AI control callback handler
+            CallbackQueryHandler(self._cmd_ai_callback, pattern="^ai_"),
+            
             # Voice message handler
             MessageHandler(filters.VOICE, self._handle_voice),
             
@@ -402,9 +412,14 @@ Use /model to change AI model.
   /read [file] - Read file contents
   /pwd - Show current path
 
-**AI (Headless):**
-  /ai [prompt] - Run Cursor AI
-  /model - Select AI model 🤖
+**AI Control:** 🤖
+  /ai [prompt] - Send prompt to Cursor
+  /ai accept [msg] - Commit AI changes
+  /ai revert - Discard AI changes
+  /ai continue [prompt] - Follow-up
+  /ai stop - Clear session
+  /ai status - Check state
+  /model - Select AI model
   /models - List available models
   _(or just send text/voice)_
 
@@ -878,69 +893,316 @@ Please try again with /create
     # AI Commands
     # ==========================================
     
+    def _get_cursor_agent(self) -> CursorAgentBridge:
+        """Get or create the Cursor Agent for current workspace."""
+        return get_agent_for_workspace(self.cli.current_dir)
+    
     @require_auth
     async def _cmd_ai(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Execute AI prompt via Cursor CLI."""
+        """
+        AI command with subcommands for Cursor control.
+        
+        Usage:
+            /ai <prompt>           - Send prompt to Cursor
+            /ai accept [message]   - Accept and commit all changes
+            /ai revert             - Discard all changes
+            /ai continue <prompt>  - Continue with follow-up prompt
+            /ai stop               - Stop/clear current session
+            /ai status             - Check agent status
+        """
         if not context.args:
-            await update.message.reply_text(
-                "Usage: /ai [prompt]\n\nExample: /ai Refactor the login function to use JWT",
-                parse_mode="Markdown"
-            )
+            await self._show_ai_help(update)
             return
         
-        prompt = " ".join(context.args)
-        await self._execute_ai_prompt(update, prompt)
+        # Check for subcommands
+        subcommand = context.args[0].lower()
+        remaining_args = context.args[1:] if len(context.args) > 1 else []
+        
+        if subcommand == "accept":
+            await self._cmd_ai_accept(update, remaining_args)
+        elif subcommand == "revert":
+            await self._cmd_ai_revert(update)
+        elif subcommand == "continue":
+            if remaining_args:
+                prompt = " ".join(remaining_args)
+                await self._cmd_ai_continue(update, prompt)
+            else:
+                await update.message.reply_text(
+                    "❌ Please provide a follow-up prompt:\n\n"
+                    "`/ai continue <your follow-up prompt>`",
+                    parse_mode="Markdown"
+                )
+        elif subcommand == "stop":
+            await self._cmd_ai_stop(update)
+        elif subcommand == "status":
+            await self._cmd_ai_status(update)
+        else:
+            # Not a subcommand - treat entire args as prompt
+            prompt = " ".join(context.args)
+            await self._execute_ai_prompt(update, prompt)
+    
+    async def _show_ai_help(self, update: Update):
+        """Show AI command help."""
+        user_id = update.effective_user.id
+        current_model = self.user_prefs.get_user_model(user_id)
+        
+        # Check current status
+        agent = self._get_cursor_agent()
+        status = agent.get_status()
+        
+        state_emoji = {
+            "idle": "⚪",
+            "prompt_sent": "🟡",
+            "awaiting_changes": "🟡", 
+            "changes_pending": "🟢",
+            "processing": "🔵"
+        }
+        
+        state = status.data.get("state", "idle") if status.data else "idle"
+        
+        help_text = f"""
+🤖 **AI Commands** (Cursor Integration)
+
+**Send Prompt:**
+  `/ai <prompt>` - Send to Cursor AI
+
+**Control Changes:**
+  `/ai accept [msg]` - Commit all changes
+  `/ai revert` - Discard all changes
+  `/ai continue <prompt>` - Follow-up prompt
+  `/ai stop` - Clear session
+
+**Status:**
+  `/ai status` - Check current state
+
+**Current State:** {state_emoji.get(state, "⚪")} `{state}`
+**Model:** {current_model.emoji} {current_model.display_name}
+**Workspace:** `{self.cli.current_dir.name}`
+
+💡 _You can also just send text as AI prompt!_
+"""
+        await update.message.reply_text(help_text, parse_mode="Markdown")
     
     async def _execute_ai_prompt(self, update: Update, prompt: str):
-        """Execute an AI prompt and show results."""
+        """Execute an AI prompt via Cursor Agent Bridge - sends directly to Composer!"""
         user_id = update.effective_user.id
         self.sentinel.log_command(user_id, f"/ai {prompt[:50]}...")
         
         # Get user's selected model
         current_model = self.user_prefs.get_user_model(user_id)
         
-        await update.message.reply_text(
-            f"🤖 Executing AI prompt with **{current_model.display_name}**...\n\n_{prompt}_", 
+        # Show "sending" message
+        status_msg = await update.message.reply_text(
+            f"🤖 Sending to Cursor with **{current_model.display_name}**...\n\n_{prompt}_", 
             parse_mode="Markdown"
         )
         
-        # Run the AI command with the selected model
-        result = self.cli.run_cursor_ai(prompt, model=current_model.id)
+        # Get the Cursor Agent
+        agent = self._get_cursor_agent()
+        
+        # Send prompt DIRECTLY to Cursor Composer
+        result = agent.send_prompt(prompt, model=current_model.id)
         
         if result.success:
-            message = "✅ **AI Execution Complete!**\n\n"
+            # Build response
+            message = f"""✅ **Prompt Sent to Cursor!**
+
+🚀 Your prompt was sent directly to Cursor Composer via keyboard automation.
+
+📝 **Prompt:** _{prompt[:100]}{'...' if len(prompt) > 100 else ''}_
+
+⏳ **AI is now processing...**
+
+When the AI finishes making changes, use:
+• `/ai status` - Check for changes
+• `/ai accept` - Commit the changes
+• `/ai revert` - Discard the changes
+• `/ai continue` - Send follow-up"""
             
-            # Automatically show diff summary (preview)
-            diff_result = self.cli.git_diff(stat_only=True)
-            if diff_result.stdout.strip():
-                message += f"📊 **Changes Preview:**\n```\n{diff_result.stdout.strip()}\n```"
-                
-                # Build inline keyboard for expansion and actions
-                # Matches Cursor's: Keep All, Undo All, Continue
+            # Build inline keyboard for quick actions
+            keyboard = [
+                [
+                    InlineKeyboardButton("📊 Check Changes", callback_data="ai_check"),
+                    InlineKeyboardButton("📖 View Diff", callback_data="diff_full"),
+                ],
+                [
+                    InlineKeyboardButton("✅ Accept All", callback_data="ai_accept"),
+                    InlineKeyboardButton("🗑️ Revert All", callback_data="ai_revert"),
+                ],
+                [InlineKeyboardButton("▶️ Continue", callback_data="ai_continue_prompt")],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(
+                self._truncate_message(message), 
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+        else:
+            error = result.error or "Unknown error"
+            message = f"❌ **Failed to Send Prompt**\n\n{result.message}\n\n```\n{error}\n```"
+            
+            # Add troubleshooting tips
+            if "automation" in error.lower() or "pyautogui" in error.lower():
+                message += "\n\n💡 **Tip:** Make sure `pyautogui` and `pyperclip` are installed:\n`pip install pyautogui pyperclip`"
+            elif "cursor" in error.lower():
+                message += "\n\n💡 **Tip:** Make sure Cursor is installed and `cursor` is in your PATH."
+            
+            await update.message.reply_text(self._truncate_message(message), parse_mode="Markdown")
+    
+    async def _cmd_ai_accept(self, update: Update, args: list):
+        """Accept and commit all AI changes."""
+        user_id = update.effective_user.id
+        self.sentinel.log_command(user_id, "/ai accept")
+        
+        agent = self._get_cursor_agent()
+        
+        # Custom commit message if provided
+        message = " ".join(args) if args else None
+        
+        result = agent.accept_changes(message)
+        
+        if result.success:
+            data = result.data or {}
+            response = f"""✅ **Changes Accepted!**
+
+📝 **Commit:** {data.get('commit_message', 'TeleCode AI commit')}
+📁 **Files:** {data.get('files_committed', 0)} committed
+
+Use `/push` to push to remote."""
+        else:
+            response = f"❌ **Accept Failed**\n\n{result.message}\n\n{result.error or ''}"
+        
+        await update.message.reply_text(response, parse_mode="Markdown")
+    
+    async def _cmd_ai_revert(self, update: Update):
+        """Revert all AI changes with confirmation."""
+        user_id = update.effective_user.id
+        self.sentinel.log_command(user_id, "/ai revert")
+        
+        agent = self._get_cursor_agent()
+        
+        # First check what we're reverting
+        check = agent.check_changes()
+        
+        if check.data and check.data.get("has_changes"):
+            file_count = check.data.get("file_count", 0)
+            
+            # Show confirmation
+            keyboard = [[
+                InlineKeyboardButton(f"⚠️ Yes, Revert {file_count} files", callback_data="ai_revert_confirm"),
+                InlineKeyboardButton("❌ Cancel", callback_data="ai_revert_cancel"),
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(
+                f"⚠️ **Confirm Revert**\n\n"
+                f"This will **permanently discard** {file_count} file(s)!\n\n"
+                f"**This cannot be undone!**",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+        else:
+            await update.message.reply_text("✅ No changes to revert.", parse_mode="Markdown")
+    
+    async def _cmd_ai_continue(self, update: Update, prompt: str):
+        """Continue with a follow-up prompt."""
+        user_id = update.effective_user.id
+        self.sentinel.log_command(user_id, f"/ai continue {prompt[:30]}...")
+        
+        agent = self._get_cursor_agent()
+        current_model = self.user_prefs.get_user_model(user_id)
+        
+        result = agent.continue_session(prompt, model=current_model.id)
+        
+        if result.success:
+            await update.message.reply_text(
+                f"▶️ **Continuing...**\n\n"
+                f"📝 Follow-up: _{prompt}_\n\n"
+                f"Open Cursor and use `Ctrl+I` to continue.",
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ **Cannot Continue**\n\n{result.message}\n\n{result.error or ''}",
+                parse_mode="Markdown"
+            )
+    
+    async def _cmd_ai_stop(self, update: Update):
+        """Stop/clear the current AI session."""
+        user_id = update.effective_user.id
+        self.sentinel.log_command(user_id, "/ai stop")
+        
+        agent = self._get_cursor_agent()
+        result = agent.stop_session()
+        
+        await update.message.reply_text(
+            f"🛑 **Session Stopped**\n\n"
+            f"Previous state: `{result.data.get('previous_state', 'unknown') if result.data else 'unknown'}`\n"
+            f"Session cleared. Ready for new prompts.",
+            parse_mode="Markdown"
+        )
+    
+    async def _cmd_ai_status(self, update: Update):
+        """Show current AI agent status."""
+        user_id = update.effective_user.id
+        self.sentinel.log_command(user_id, "/ai status")
+        
+        agent = self._get_cursor_agent()
+        status = agent.get_status()
+        current_model = self.user_prefs.get_user_model(user_id)
+        
+        if status.success and status.data:
+            data = status.data
+            
+            state_emoji = {
+                "idle": "⚪ Idle",
+                "prompt_sent": "🟡 Prompt Sent",
+                "awaiting_changes": "🟡 Awaiting Changes", 
+                "changes_pending": "🟢 Changes Pending",
+                "processing": "🔵 Processing"
+            }
+            
+            state = data.get("state", "idle")
+            
+            response = f"""📊 **AI Agent Status**
+
+**State:** {state_emoji.get(state, state)}
+**Workspace:** `{Path(data.get('workspace', '')).name}`
+**Model:** {current_model.emoji} {current_model.display_name}
+
+**Changes:**
+  • Detected: {'✅ Yes' if data.get('changes_detected') else '❌ No'}
+  • Pending files: {data.get('file_count', 0)}
+"""
+            
+            if data.get('prompt_preview'):
+                response += f"\n**Last Prompt:** _{data['prompt_preview']}..._"
+            
+            if data.get('pending_files'):
+                files_list = "\n".join(f"  • `{f}`" for f in data['pending_files'][:5])
+                if len(data['pending_files']) > 5:
+                    files_list += f"\n  _...and {len(data['pending_files']) - 5} more_"
+                response += f"\n\n**Pending Files:**\n{files_list}"
+            
+            # Add action buttons if there are pending changes
+            if data.get('changes_detected'):
                 keyboard = [
-                    [InlineKeyboardButton("📖 View Full Diff", callback_data="diff_full")],
                     [
-                        InlineKeyboardButton("✅ Keep All", callback_data="diff_keep"),
-                        InlineKeyboardButton("🗑️ Undo All", callback_data="diff_undo"),
+                        InlineKeyboardButton("✅ Accept All", callback_data="ai_accept"),
+                        InlineKeyboardButton("🗑️ Revert All", callback_data="ai_revert"),
                     ],
-                    [InlineKeyboardButton("▶️ Continue", callback_data="diff_continue")],
+                    [InlineKeyboardButton("📖 View Diff", callback_data="diff_full")],
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
-                
-                await update.message.reply_text(
-                    self._truncate_message(message), 
-                    parse_mode="Markdown",
-                    reply_markup=reply_markup
-                )
-                return
+                await update.message.reply_text(response, parse_mode="Markdown", reply_markup=reply_markup)
             else:
-                message += "_(No file changes detected)_"
-                if result.stdout.strip():
-                    message += f"\n\n**Output:**\n```\n{result.stdout[:1000]}\n```"
+                await update.message.reply_text(response, parse_mode="Markdown")
         else:
-            message = f"❌ **AI Execution Failed**\n\n```\n{result.stderr}\n```"
-        
-        await update.message.reply_text(self._truncate_message(message), parse_mode="Markdown")
+            await update.message.reply_text(
+                f"❌ Failed to get status: {status.error or 'Unknown error'}",
+                parse_mode="Markdown"
+            )
     
     # ==========================================
     # Model Selection Commands
@@ -1214,6 +1476,135 @@ Your next /ai command will use this model.
             await query.message.reply_text(
                 "▶️ **Continue with AI**\n\n"
                 "Send your next prompt as a message.\n\n"
+                "_Example: \"Now add unit tests for the changes\"_",
+                parse_mode="Markdown"
+            )
+    
+    # ==========================================
+    # AI Control Callbacks
+    # ==========================================
+    
+    @require_auth
+    async def _cmd_ai_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle AI control button callbacks."""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = update.effective_user.id
+        callback_data = query.data
+        
+        agent = self._get_cursor_agent()
+        
+        if callback_data == "ai_check":
+            # Check for changes
+            self.sentinel.log_command(user_id, "/ai status (button)")
+            
+            result = agent.check_changes()
+            
+            if result.success and result.data:
+                data = result.data
+                if data.get("has_changes"):
+                    diff_stat = data.get("diff_stat", "")
+                    message = f"📊 **Changes Detected!**\n\n**{data.get('file_count', 0)} files modified**\n\n```\n{diff_stat}\n```"
+                else:
+                    message = "✅ No changes detected yet.\n\nMake sure to run AI in Cursor first!"
+            else:
+                message = f"❌ Check failed: {result.error or 'Unknown error'}"
+            
+            await query.message.reply_text(message, parse_mode="Markdown")
+        
+        elif callback_data == "ai_accept":
+            # Accept all changes
+            self.sentinel.log_command(user_id, "/ai accept (button)")
+            
+            result = agent.accept_changes()
+            
+            if result.success:
+                data = result.data or {}
+                message = f"""✅ **Changes Accepted!**
+
+📝 **Commit:** {data.get('commit_message', 'TeleCode AI commit')}
+📁 **Files:** {data.get('files_committed', 0)} committed
+
+Use `/push` to push to remote."""
+            else:
+                message = f"❌ Accept failed: {result.error or result.message}"
+            
+            try:
+                await query.edit_message_text(
+                    query.message.text + f"\n\n{message}",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                await query.message.reply_text(message, parse_mode="Markdown")
+        
+        elif callback_data == "ai_revert":
+            # Show revert confirmation
+            self.sentinel.log_command(user_id, "/ai revert (button)")
+            
+            check = agent.check_changes()
+            
+            if check.data and check.data.get("has_changes"):
+                file_count = check.data.get("file_count", 0)
+                
+                keyboard = [[
+                    InlineKeyboardButton(f"⚠️ Yes, Revert {file_count} files", callback_data="ai_revert_confirm"),
+                    InlineKeyboardButton("❌ Cancel", callback_data="ai_revert_cancel"),
+                ]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await query.message.reply_text(
+                    f"⚠️ **Confirm Revert**\n\n"
+                    f"This will **permanently discard** {file_count} file(s)!\n\n"
+                    f"**This cannot be undone!**",
+                    parse_mode="Markdown",
+                    reply_markup=reply_markup
+                )
+            else:
+                await query.message.reply_text("✅ No changes to revert.", parse_mode="Markdown")
+        
+        elif callback_data == "ai_revert_confirm":
+            # Actually revert
+            self.sentinel.log_command(user_id, "/ai revert (confirmed)")
+            
+            result = agent.revert_changes()
+            
+            if result.success:
+                data = result.data or {}
+                message = f"""🗑️ **All Changes Reverted!**
+
+📁 **Files reverted:** {data.get('files_reverted', 0)}
+
+Working directory is now clean."""
+            else:
+                message = f"❌ Revert failed: {result.error or result.message}"
+            
+            try:
+                await query.edit_message_text(message, parse_mode="Markdown")
+            except Exception:
+                await query.message.reply_text(message, parse_mode="Markdown")
+        
+        elif callback_data == "ai_revert_cancel":
+            # Cancel revert
+            try:
+                await query.edit_message_text(
+                    "✅ Revert cancelled. Your changes are still intact.",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                await query.message.reply_text(
+                    "✅ Revert cancelled. Your changes are still intact.",
+                    parse_mode="Markdown"
+                )
+        
+        elif callback_data == "ai_continue_prompt":
+            # Prompt user to send follow-up
+            self.sentinel.log_command(user_id, "/ai continue (button)")
+            
+            await query.message.reply_text(
+                "▶️ **Continue with AI**\n\n"
+                "Send your next prompt as a message, or use:\n"
+                "`/ai continue <your follow-up prompt>`\n\n"
                 "_Example: \"Now add unit tests for the changes\"_",
                 parse_mode="Markdown"
             )
