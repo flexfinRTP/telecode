@@ -16,7 +16,7 @@ Commands:
   /ai       - Execute AI prompt via Cursor CLI
     /ai <prompt>         - Send prompt to Cursor
     /ai accept           - Accept AI changes (Ctrl+Enter)
-    /ai reject           - Reject AI changes (Ctrl+Backspace)
+    /ai reject           - Reject AI changes (Ctrl+Z / Escape)
     /ai continue <prompt>- Follow-up prompt
     /ai stop             - Clear session
     /ai status           - Check agent status
@@ -35,9 +35,11 @@ AUDIT: Reviewed 2026-02 - Rate limiting added, input sanitization
 
 import os
 import sys
+import io
 import logging
 import asyncio
 import time
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
@@ -299,6 +301,49 @@ class TeleCodeBot:
             return text
         return text[:MAX_MESSAGE_LENGTH - 100] + "\n\n... (truncated)"
     
+    async def _send_ocr_as_document(
+        self,
+        message,
+        text: str,
+        filename: str = "cursor_output.txt",
+        caption: str = "📝 **AI Output Text**"
+    ):
+        """
+        Send OCR extracted text as a document file for full scrollability.
+        
+        Telegram messages are limited to 4096 chars, but document uploads
+        allow unlimited text that users can scroll through.
+        
+        Args:
+            message: The Telegram message to reply to
+            text: The text content to send as document
+            filename: Name for the document file
+            caption: Caption for the document
+        """
+        try:
+            # Create in-memory text file
+            text_bytes = text.encode('utf-8')
+            text_io = io.BytesIO(text_bytes)
+            text_io.name = filename
+            
+            # Send as document
+            await message.reply_document(
+                document=text_io,
+                filename=filename,
+                caption=self._truncate_message(caption)[:1024],
+                parse_mode="Markdown"
+            )
+            logger.info(f"Sent OCR text as document: {len(text)} chars")
+            
+        except Exception as e:
+            logger.warning(f"Failed to send OCR document: {e}")
+            # Fallback: send truncated message
+            truncated = text[:3500] + "\n\n... (text too long, showing first 3500 chars)"
+            await message.reply_text(
+                f"📝 **Cursor AI Output:**\n\n{truncated}",
+                parse_mode="Markdown"
+            )
+    
     def _format_result(self, title: str, result, show_command: bool = False) -> str:
         """Format a CLI result for display."""
         parts = [f"**{title}**"]
@@ -423,7 +468,7 @@ Use /model to change AI model.
 **AI Control:** 🤖
   /ai [prompt] - Send prompt to Cursor
   /ai accept - Accept AI changes (Ctrl+Enter)
-  /ai reject - Reject AI changes (Ctrl+Backspace)
+  /ai reject - Reject AI changes (Ctrl+Z / Escape)
   /ai continue [prompt] - Follow-up
   /ai stop - Clear session
   /ai status - Check state
@@ -451,7 +496,9 @@ Use /model to change AI model.
         current_model = self.user_prefs.get_user_model(user_id)
         
         info = format_system_status()
-        info += f"\n\n📂 **Workspace**\n{self.cli.get_current_info()}"
+        # Wrap workspace info in code block to avoid Markdown parsing issues with git status (## main)
+        workspace_info = self.cli.get_current_info()
+        info += f"\n\n📂 **Workspace**\n```\n{workspace_info}\n```"
         info += f"\n\n🤖 **AI Model**\n"
         info += f"  {current_model.emoji} {current_model.display_name}\n"
         info += f"  Context: {current_model.context_window}\n"
@@ -651,6 +698,7 @@ Use /model to change AI model.
         
         if success:
             # Show new location with git status
+            # Wrap in code block to avoid Markdown parsing issues with git status (## main)
             info = self.cli.get_current_info()
             
             # Check Cursor status for this workspace
@@ -668,7 +716,7 @@ Use /model to change AI model.
             cursor_emoji = status_emoji.get(cursor_status.get("status", ""), "⚪")
             cursor_msg = cursor_status.get("message", "Unknown status")
             
-            response = f"✅ {message}\n\n{info}\n\n💻 **Cursor:** {cursor_emoji} {cursor_msg}"
+            response = f"✅ {message}\n\n```\n{info}\n```\n\n💻 **Cursor:** {cursor_emoji} {cursor_msg}"
             
             # Add button to open Cursor if not already open for this workspace
             if not cursor_status.get("workspace_open"):
@@ -729,7 +777,8 @@ Use /model to change AI model.
         self.sentinel.log_command(update.effective_user.id, "/pwd")
         
         info = self.cli.get_current_info()
-        await update.message.reply_text(info, parse_mode="Markdown")
+        # Don't use Markdown parse_mode - git status contains ## which breaks it
+        await update.message.reply_text(info)
     
     # ==========================================
     # Project Creation Commands (Conversation)
@@ -1104,7 +1153,7 @@ Please try again with /create
         Usage:
             /ai <prompt>           - Send prompt to Cursor
             /ai accept             - Accept AI changes (Ctrl+Enter)
-            /ai reject             - Reject AI changes (Ctrl+Backspace)
+            /ai reject             - Reject AI changes (Ctrl+Z / Escape)
             /ai continue <prompt>  - Continue with follow-up prompt
             /ai stop               - Stop/clear current session
             /ai status             - Check agent status
@@ -1175,7 +1224,7 @@ Please try again with /create
 
 **Cursor Controls:** (buttons OR commands)
   `/ai accept` (✅) - Accept changes (Ctrl+Enter)
-  `/ai reject` (❌) - Reject changes (Ctrl+Backspace)
+  `/ai reject` (❌) - Reject changes (Ctrl+Z / Escape)
   📊 Check - See changed files
   📖 Diff - View changes
 
@@ -1234,17 +1283,53 @@ Please try again with /create
                 final_screenshot_path = screenshot_path
             
             if not is_complete:
-                # Update the status message with progress
-                try:
-                    await status_msg.edit_text(
-                        f"{message}\n\n"
-                        f"🤖 **{current_model.display_name}**\n"
-                        f"📂 `{workspace_name}`\n\n"
-                        f"📝 _{prompt[:80]}{'...' if len(prompt) > 80 else ''}_",
-                        parse_mode="Markdown"
-                    )
-                except Exception:
-                    pass
+                # Check if this is a progress screenshot update
+                if screenshot_path and "📸" in message:
+                    # Send progress screenshot as a new photo message with control buttons
+                    try:
+                        from pathlib import Path
+                        screenshot_file = Path(screenshot_path)
+                        if screenshot_file.exists():
+                            # Add control buttons for stuck agent scenarios
+                            keyboard = [[
+                                InlineKeyboardButton("➡️ Continue", callback_data="ai_send_continue"),
+                                InlineKeyboardButton("🛑 Stop", callback_data="ai_stop"),
+                            ]]
+                            reply_markup = InlineKeyboardMarkup(keyboard)
+                            
+                            with open(screenshot_file, 'rb') as photo:
+                                await update.message.reply_photo(
+                                    photo=photo,
+                                    caption=f"{message}\n\n📝 _{prompt[:60]}{'...' if len(prompt) > 60 else ''}_",
+                                    parse_mode="Markdown",
+                                    reply_markup=reply_markup
+                                )
+                            logger.info(f"[AI_PROMPT] Sent progress screenshot with controls: {screenshot_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to send progress screenshot: {e}")
+                        # Fall back to text update
+                        try:
+                            await status_msg.edit_text(
+                                f"{message}\n\n"
+                                f"🤖 **{current_model.display_name}**\n"
+                                f"📂 `{workspace_name}`\n\n"
+                                f"📝 _{prompt[:80]}{'...' if len(prompt) > 80 else ''}_",
+                                parse_mode="Markdown"
+                            )
+                        except Exception:
+                            pass
+                else:
+                    # Regular text status update
+                    try:
+                        await status_msg.edit_text(
+                            f"{message}\n\n"
+                            f"🤖 **{current_model.display_name}**\n"
+                            f"📂 `{workspace_name}`\n\n"
+                            f"📝 _{prompt[:80]}{'...' if len(prompt) > 80 else ''}_",
+                            parse_mode="Markdown"
+                        )
+                    except Exception:
+                        pass
         
         # Check if Cursor is open - if not, open it first
         cursor_status = agent.check_cursor_status()
@@ -1291,13 +1376,15 @@ Please try again with /create
                 return
         
         # Send prompt and wait for completion with live status updates
+        # Increased timeouts: 5 min max, 3s polls, 10 stable polls (30s), 15s min processing
         result = await agent.send_prompt_and_wait(
             prompt=prompt,
             status_callback=status_callback,
             model=current_model.id,
-            timeout=90.0,
-            poll_interval=2.0,
-            stable_threshold=3
+            timeout=300.0,           # 5 minutes max for complex prompts
+            poll_interval=3.0,       # Check every 3 seconds
+            stable_threshold=10,     # Need 10 stable polls (30s of no changes)
+            min_processing_time=15.0 # At least 15s before declaring done
         )
         
         if result.success:
@@ -1440,7 +1527,7 @@ The AI changes have been applied via Ctrl+Enter.
         await update.message.reply_text(response, parse_mode="Markdown")
     
     async def _cmd_ai_reject(self, update: Update):
-        """Reject AI changes in Cursor (uses Ctrl+Backspace or Escape)."""
+        """Reject AI changes in Cursor (uses Ctrl+Z or Escape)."""
         user_id = update.effective_user.id
         self.sentinel.log_command(user_id, "/ai reject")
         
@@ -1454,7 +1541,7 @@ The AI changes have been applied via Ctrl+Enter.
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         current_mode = agent.get_prompt_mode()
-        method = "Escape" if current_mode == "chat" else "Ctrl+Backspace"
+        method = "Escape" if current_mode == "chat" else "Ctrl+Z (undo)"
         
         await update.message.reply_text(
             f"⚠️ **Confirm Reject**\n\n"
@@ -1924,18 +2011,32 @@ Your next /ai command will use this model.
         agent = self._get_cursor_agent()
         
         if callback_data == "ai_check":
-            # Check for changes - show diff summary from latest prompt
+            # Check for changes - show diff summary + OCR text from latest prompt
             self.sentinel.log_command(user_id, "/ai status (button)")
             
-            # Use the new get_diff_summary method for a nicer output
+            # First, get the git diff summary
             result = agent.get_diff_summary()
             
             if result.success and result.data:
                 data = result.data
-                message = data.get("summary", "No summary available")
+                git_summary = data.get("summary", "No summary available")
+                has_changes = data.get("has_changes", False)
                 
-                # Add action buttons if there are changes (Cursor controls only, no git)
-                if data.get("has_changes"):
+                # Capture screenshot and extract text via OCR
+                ocr_result = agent.capture_and_extract_text()
+                ocr_summary = ""
+                screenshot_path = None
+                
+                if ocr_result.success and ocr_result.data:
+                    ocr_summary = ocr_result.data.get("summary", "")
+                    screenshot_path = ocr_result.data.get("screenshot_path")
+                
+                # Build the response message
+                message_parts = [git_summary]
+                
+                # Add buttons (Cursor controls only, no git)
+                keyboard = []
+                if has_changes:
                     keyboard = [
                         [
                             InlineKeyboardButton("✅ Accept", callback_data="ai_accept"),
@@ -1943,10 +2044,43 @@ Your next /ai command will use this model.
                         ],
                         [InlineKeyboardButton("📖 View Full Diff", callback_data="diff_full")],
                     ]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    await query.message.reply_text(message, parse_mode="Markdown", reply_markup=reply_markup)
+                
+                reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+                
+                # Send screenshot with git summary first
+                if screenshot_path and Path(screenshot_path).exists():
+                    try:
+                        with open(screenshot_path, 'rb') as photo:
+                            await query.message.reply_photo(
+                                photo=photo,
+                                caption=self._truncate_message(git_summary)[:1024],
+                                parse_mode="Markdown",
+                                reply_markup=reply_markup
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to send screenshot: {e}")
+                        await query.message.reply_text(git_summary, parse_mode="Markdown", reply_markup=reply_markup)
                 else:
-                    await query.message.reply_text(message, parse_mode="Markdown")
+                    await query.message.reply_text(git_summary, parse_mode="Markdown", reply_markup=reply_markup)
+                
+                # If we have OCR text, send it separately (allows scrolling through long output)
+                if ocr_summary and len(ocr_summary.strip()) > 10:
+                    # Check if text is too long for a message (Telegram limit ~4096 chars)
+                    if len(ocr_summary) > 3800:
+                        # Send as a text document for full scrollability
+                        await self._send_ocr_as_document(
+                            query.message,
+                            ocr_summary,
+                            "cursor_output.txt",
+                            "📝 **AI Output Text** (full, scrollable)"
+                        )
+                    else:
+                        # Send as formatted message
+                        ocr_message = f"📝 **Cursor AI Output:**\n\n{ocr_summary}"
+                        await query.message.reply_text(
+                            self._truncate_message(ocr_message),
+                            parse_mode="Markdown"
+                        )
             else:
                 message = f"❌ Check failed: {result.error or 'Unknown error'}"
                 await query.message.reply_text(message, parse_mode="Markdown")
@@ -1981,7 +2115,7 @@ The AI changes have been applied via {shortcut}.
             self.sentinel.log_command(user_id, "/ai reject (button)")
             
             current_mode = agent.get_prompt_mode()
-            method = "Escape" if current_mode == "chat" else "Ctrl+Backspace"
+            method = "Escape" if current_mode == "chat" else "Ctrl+Z (undo x3)"
             
             keyboard = [[
                 InlineKeyboardButton("⚠️ Yes, Reject Changes", callback_data="ai_reject_confirm"),
@@ -2000,14 +2134,14 @@ The AI changes have been applied via {shortcut}.
             )
         
         elif callback_data == "ai_reject_confirm":
-            # Actually reject using Cursor automation (Ctrl+Backspace or Escape)
+            # Actually reject using Cursor automation (Ctrl+Z or Escape)
             self.sentinel.log_command(user_id, "/ai reject (confirmed)")
             
             result = agent.revert_changes_via_cursor()
             
             if result.success:
                 data = result.data or {}
-                shortcut = data.get("shortcut", "Ctrl+Backspace")
+                shortcut = data.get("shortcut", "Ctrl+Z")
                 message = f"""❌ **Changes Rejected in Cursor!**
 
 🔄 Method: {shortcut}
@@ -2230,13 +2364,13 @@ The AI changes have been applied via {shortcut}.
                 await query.message.reply_text(message, parse_mode="Markdown")
         
         elif callback_data == "ai_cancel":
-            # Cancel a pending action in Cursor
+            # Cancel a pending action in Cursor (Escape for dialogs)
             self.sentinel.log_command(user_id, "/ai cancel (button)")
             
             result = agent.cancel_action()
             
             if result.success:
-                message = f"🚫 **Action Cancelled!**\n\n{result.message}\n\n_Pressed Escape in Cursor to cancel._"
+                message = f"🚫 **Action Cancelled!**\n\n{result.message}\n\n_Pressed Escape in Cursor._"
             else:
                 message = f"❌ **Failed to cancel:** {result.error or result.message}"
             
@@ -2245,14 +2379,30 @@ The AI changes have been applied via {shortcut}.
             except Exception:
                 await query.message.reply_text(message, parse_mode="Markdown")
         
+        elif callback_data == "ai_stop":
+            # Stop the current AI generation (Ctrl+Shift+Backspace)
+            self.sentinel.log_command(user_id, "/ai stop (button)")
+            
+            result = agent.stop_generation()
+            
+            if result.success:
+                message = f"🛑 **Generation Stopped!**\n\n{result.message}"
+            else:
+                message = f"❌ **Failed to stop:** {result.error or result.message}"
+            
+            try:
+                await query.edit_message_text(message, parse_mode="Markdown")
+            except Exception:
+                await query.message.reply_text(message, parse_mode="Markdown")
+        
         elif callback_data == "ai_send_continue":
-            # Send "continue" to the AI to keep it going
+            # Press Enter to click the Continue button in Cursor
             self.sentinel.log_command(user_id, "/ai continue (button)")
             
             result = agent.send_continue()
             
             if result.success:
-                message = f"➡️ **Continue Sent!**\n\n{result.message}\n\n_The AI should continue its work._"
+                message = f"➡️ **Continue Pressed!**\n\n{result.message}\n\n_Pressed Enter to activate Continue button._"
             else:
                 message = f"❌ **Failed to continue:** {result.error or result.message}"
             
@@ -2452,6 +2602,7 @@ The AI changes have been applied via {shortcut}.
                 on_settings=self._on_tray_settings,
                 on_quick_lock=self._on_tray_quick_lock,
                 on_secure_lock=self._on_tray_secure_lock,
+                on_virtual_display=self._on_tray_virtual_display,
                 on_stop=self._request_stop
             )
             if self.tray:
@@ -2471,10 +2622,13 @@ The AI changes have been applied via {shortcut}.
         if self.tray:
             self.tray.update_status("Connected")
         
-        # Keep running
+        # Keep running - check for stop request periodically
         try:
-            while True:
-                await asyncio.sleep(3600)  # Sleep for an hour, repeat
+            while not self._stop_requested:
+                await asyncio.sleep(1)  # Check stop flag every second
+            # Stop was requested (e.g., from system tray)
+            logger.info("Stop flag detected, shutting down...")
+            await self.stop()
         except (KeyboardInterrupt, SystemExit):
             await self.stop()
     
@@ -2492,13 +2646,27 @@ The AI changes have been applied via {shortcut}.
         """Handle Settings click from tray icon."""
         logger.info("Settings requested from system tray")
         try:
-            # Open the config GUI
+            # Open the config GUI using --settings-only mode
+            # This bypasses the instance lock check and doesn't try to start
+            # a new bot after saving (since one is already running)
             import subprocess
             project_root = Path(__file__).parent.parent
+            
+            # Use pythonw on Windows to avoid console window, python on other platforms
+            if sys.platform == "win32":
+                # Try pythonw first for no console window
+                pythonw = Path(sys.executable).parent / "pythonw.exe"
+                python_exe = str(pythonw) if pythonw.exists() else sys.executable
+            else:
+                python_exe = sys.executable
+            
             subprocess.Popen(
-                [sys.executable, "main.py", "--config"],
-                cwd=str(project_root)
+                [python_exe, "main.py", "--settings-only"],
+                cwd=str(project_root),
+                # On Windows, use CREATE_NO_WINDOW to avoid console flash
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
             )
+            logger.info("Settings GUI launched successfully")
         except Exception as e:
             logger.error(f"Failed to open settings: {e}")
     
@@ -2511,6 +2679,35 @@ The AI changes have been applied via {shortcut}.
         """Handle Secure Lock click from tray icon (Windows only)."""
         logger.info("Secure Lock requested from system tray")
         self._run_elevated_lock(secure_mode=True)
+    
+    def _on_tray_virtual_display(self, start: bool):
+        """Handle Virtual Display toggle from tray icon (Linux only)."""
+        if sys.platform.startswith("linux"):
+            try:
+                from .cursor_agent import start_virtual_display, stop_virtual_display, VirtualDisplayManager
+                
+                if start:
+                    logger.info("Starting virtual display from system tray")
+                    success = start_virtual_display()
+                    if success:
+                        logger.info("Virtual display started successfully")
+                        if self.tray:
+                            self.tray.set_virtual_display_status(True)
+                    else:
+                        logger.warning("Failed to start virtual display")
+                        if self.tray:
+                            self.tray.set_virtual_display_status(False)
+                else:
+                    logger.info("Stopping virtual display from system tray")
+                    stop_virtual_display()
+                    if self.tray:
+                        self.tray.set_virtual_display_status(False)
+            except Exception as e:
+                logger.error(f"Virtual display toggle failed: {e}")
+                if self.tray:
+                    self.tray.set_virtual_display_status(False)
+        else:
+            logger.warning("Virtual display is only available on Linux")
     
     def _run_elevated_lock(self, secure_mode: bool = False):
         """

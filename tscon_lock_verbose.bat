@@ -49,7 +49,8 @@ pause > nul
 
 echo.
 echo Disconnecting session...
-tscon %sessionname% /dest:console
+REM Use full path to tscon.exe (required when PATH may not include System32)
+%SystemRoot%\System32\tscon.exe %sessionname% /dest:console
 
 if errorlevel 1 (
     echo.
@@ -57,7 +58,12 @@ if errorlevel 1 (
     echo   ERROR: TSCON FAILED
     echo ========================================
     echo.
-    echo This command requires Administrator rights.
+    echo Possible causes:
+    echo   - Not running as Administrator
+    echo   - Running in Remote Desktop session
+    echo   - Windows Home edition (limited support)
+    echo.
+    echo Current session: %sessionname%
     echo.
     echo HOW TO FIX:
     echo   1. Close this window

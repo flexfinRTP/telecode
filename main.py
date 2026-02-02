@@ -304,7 +304,13 @@ For more information, see the README.md file.
     parser.add_argument(
         "--version", "-v",
         action="version",
-        version="TeleCode v0.1.5"
+        version="TeleCode v0.1.11"
+    )
+    
+    parser.add_argument(
+        "--settings-only", "-s",
+        action="store_true",
+        help="Open settings GUI only (no instance lock, no bot start - for tray menu)"
     )
     
     args = parser.parse_args()
@@ -314,6 +320,20 @@ For more information, see the README.md file.
     
     # Print banner
     print_banner()
+    
+    # ==========================================
+    # Settings-only mode (for system tray)
+    # ==========================================
+    # This mode opens the config GUI without checking instance lock
+    # and without starting the bot afterward. Used when clicking
+    # "Settings" from the system tray while bot is already running.
+    if args.settings_only:
+        logger.info("Opening settings GUI (settings-only mode)")
+        from src.config_gui import show_config_gui
+        # No callback - just edit and save, don't try to start bot
+        show_config_gui(on_save_callback=None)
+        logger.info("Settings GUI closed")
+        sys.exit(0)
     
     # ==========================================
     # Single Instance Check

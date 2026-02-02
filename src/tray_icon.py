@@ -8,6 +8,12 @@ Features:
 - Green icon when running
 - Right-click menu for actions
 - Tooltip shows status
+- Cross-platform support (Windows/macOS/Linux)
+
+Platform-specific features:
+- Windows: TSCON lock options
+- Linux: Virtual display (Xvfb) options
+- macOS: Standard menu (no headless lock)
 ============================================
 """
 
@@ -18,6 +24,11 @@ from typing import Optional, Callable
 from pathlib import Path
 
 logger = logging.getLogger("telecode.tray")
+
+# Platform detection
+IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+IS_LINUX = sys.platform.startswith("linux")
 
 # Try to import pystray (optional dependency)
 try:
@@ -34,6 +45,7 @@ class TrayIcon:
     System tray icon for TeleCode.
     
     Shows status and provides quick actions via right-click menu.
+    Cross-platform support with platform-specific options.
     """
     
     def __init__(
@@ -41,6 +53,7 @@ class TrayIcon:
         on_settings: Optional[Callable] = None,
         on_quick_lock: Optional[Callable] = None,
         on_secure_lock: Optional[Callable] = None,
+        on_virtual_display: Optional[Callable] = None,
         on_stop: Optional[Callable] = None,
     ):
         """
@@ -48,13 +61,15 @@ class TrayIcon:
         
         Args:
             on_settings: Callback when Settings is clicked
-            on_quick_lock: Callback when Quick Lock is clicked
-            on_secure_lock: Callback when Secure Lock is clicked
+            on_quick_lock: Callback when Quick Lock is clicked (Windows only)
+            on_secure_lock: Callback when Secure Lock is clicked (Windows only)
+            on_virtual_display: Callback when Virtual Display is clicked (Linux only)
             on_stop: Callback when Stop is clicked
         """
         self.on_settings = on_settings
         self.on_quick_lock = on_quick_lock
         self.on_secure_lock = on_secure_lock
+        self.on_virtual_display = on_virtual_display
         self.on_stop = on_stop
         
         self.icon: Optional[pystray.Icon] = None
@@ -62,6 +77,7 @@ class TrayIcon:
         self.last_command = "None"
         self.command_count = 0
         self._running = False
+        self._virtual_display_active = False
         
     def _create_icon_image(self, color: str = "#39ff14") -> 'Image':
         """Create a simple colored icon."""
@@ -87,8 +103,9 @@ class TrayIcon:
         return image
     
     def _get_menu(self) -> 'pystray.Menu':
-        """Create the right-click menu."""
-        return pystray.Menu(
+        """Create the right-click menu with platform-specific options."""
+        # Build menu items list
+        items = [
             pystray.MenuItem(
                 f"✅ {self.status}",
                 None,
@@ -114,20 +131,43 @@ class TrayIcon:
                 self._on_settings_click
             ),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                "⚡ Quick Lock",
-                self._on_quick_lock_click
-            ) if sys.platform == "win32" else None,
-            pystray.MenuItem(
-                "🛡️ Secure Lock",
-                self._on_secure_lock_click
-            ) if sys.platform == "win32" else None,
-            pystray.Menu.SEPARATOR if sys.platform == "win32" else None,
+        ]
+        
+        # Platform-specific headless/lock options
+        if IS_WINDOWS:
+            # Windows: TSCON lock options
+            items.extend([
+                pystray.MenuItem(
+                    "⚡ Quick Lock",
+                    self._on_quick_lock_click
+                ),
+                pystray.MenuItem(
+                    "🛡️ Secure Lock",
+                    self._on_secure_lock_click
+                ),
+                pystray.Menu.SEPARATOR,
+            ])
+        elif IS_LINUX:
+            # Linux: Virtual display options
+            display_label = "🖥️ Stop Virtual Display" if self._virtual_display_active else "🖥️ Start Virtual Display"
+            items.extend([
+                pystray.MenuItem(
+                    display_label,
+                    self._on_virtual_display_click
+                ),
+                pystray.Menu.SEPARATOR,
+            ])
+        # macOS: No special headless options (requires external setup)
+        
+        # Common stop option
+        items.append(
             pystray.MenuItem(
                 "❌ Stop TeleCode",
                 self._on_stop_click
-            ),
+            )
         )
+        
+        return pystray.Menu(*items)
     
     def _on_settings_click(self, icon, item):
         """Handle Settings click."""
@@ -143,6 +183,18 @@ class TrayIcon:
         """Handle Secure Lock click."""
         if self.on_secure_lock:
             self.on_secure_lock()
+    
+    def _on_virtual_display_click(self, icon, item):
+        """Handle Virtual Display toggle click (Linux)."""
+        if self.on_virtual_display:
+            self._virtual_display_active = not self._virtual_display_active
+            self.on_virtual_display(self._virtual_display_active)
+            self._refresh_menu()
+    
+    def set_virtual_display_status(self, active: bool):
+        """Update the virtual display status for menu display."""
+        self._virtual_display_active = active
+        self._refresh_menu()
     
     def _on_stop_click(self, icon, item):
         """Handle Stop click."""
@@ -235,6 +287,7 @@ def start_tray(
     on_settings: Optional[Callable] = None,
     on_quick_lock: Optional[Callable] = None,
     on_secure_lock: Optional[Callable] = None,
+    on_virtual_display: Optional[Callable] = None,
     on_stop: Optional[Callable] = None,
 ) -> Optional[TrayIcon]:
     """
@@ -244,6 +297,7 @@ def start_tray(
         on_settings: Callback when Settings is clicked
         on_quick_lock: Callback when Quick Lock is clicked (Windows only)
         on_secure_lock: Callback when Secure Lock is clicked (Windows only)
+        on_virtual_display: Callback when Virtual Display is toggled (Linux only)
         on_stop: Callback when Stop is clicked
     
     Returns:
@@ -259,6 +313,7 @@ def start_tray(
             on_settings=on_settings,
             on_quick_lock=on_quick_lock,
             on_secure_lock=on_secure_lock,
+            on_virtual_display=on_virtual_display,
             on_stop=on_stop,
         )
     

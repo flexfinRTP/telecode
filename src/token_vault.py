@@ -7,8 +7,12 @@ Provides encrypted token storage to prevent:
 - Memory scraping attacks
 - Log/debug output exposure
 
-Uses DPAPI on Windows, Keychain on macOS, or
-encrypted file fallback with machine-specific key.
+Cross-platform secure storage:
+- Windows: DPAPI (Data Protection API)
+- macOS: Keychain via 'security' command
+- Linux: Secret Service (GNOME Keyring / KWallet) via 'keyring' library
+
+Fallback: Encrypted file with machine-specific key.
 
 SECURITY NOTICE:
 - Token is NEVER stored in plaintext
@@ -31,6 +35,17 @@ logger = logging.getLogger("telecode.vault")
 # Platform detection
 IS_WINDOWS = sys.platform == "win32"
 IS_MACOS = sys.platform == "darwin"
+IS_LINUX = sys.platform.startswith("linux")
+
+# Try to import keyring for cross-platform secret storage
+KEYRING_AVAILABLE = False
+try:
+    import keyring
+    KEYRING_AVAILABLE = True
+    logger.info("keyring library available for secure credential storage")
+except ImportError:
+    logger.info("keyring not installed - using platform-specific methods")
+    logger.info("Install with: pip install keyring")
 
 
 class TokenVault:
@@ -72,6 +87,8 @@ class TokenVault:
                 return self._store_windows(token)
             elif IS_MACOS:
                 return self._store_macos(token)
+            elif IS_LINUX:
+                return self._store_linux(token)
             else:
                 return self._store_encrypted_file(token)
         except Exception as e:
@@ -97,6 +114,8 @@ class TokenVault:
                 token = self._retrieve_windows()
             elif IS_MACOS:
                 token = self._retrieve_macos()
+            elif IS_LINUX:
+                token = self._retrieve_linux()
             else:
                 token = self._retrieve_encrypted_file()
             
@@ -121,6 +140,8 @@ class TokenVault:
                 return self._clear_windows()
             elif IS_MACOS:
                 return self._clear_macos()
+            elif IS_LINUX:
+                return self._clear_linux()
             else:
                 return self._clear_encrypted_file()
         except Exception:
@@ -354,6 +375,44 @@ class TokenVault:
             )
         except Exception:
             pass
+        return self._clear_encrypted_file()
+    
+    # ==========================================
+    # Linux Secret Service Implementation
+    # ==========================================
+    
+    def _store_linux(self, token: str) -> Tuple[bool, str]:
+        """Store token using Linux Secret Service (GNOME Keyring / KWallet)."""
+        if KEYRING_AVAILABLE:
+            try:
+                keyring.set_password(self.KEY_SERVICE, self.KEY_ACCOUNT, token)
+                logger.info("Token stored in Linux Secret Service (keyring)")
+                return True, "Token stored securely (Secret Service)"
+            except Exception as e:
+                logger.warning(f"Secret Service failed, using fallback: {e}")
+                return self._store_encrypted_file(token)
+        else:
+            return self._store_encrypted_file(token)
+    
+    def _retrieve_linux(self) -> Optional[str]:
+        """Retrieve token from Linux Secret Service."""
+        if KEYRING_AVAILABLE:
+            try:
+                token = keyring.get_password(self.KEY_SERVICE, self.KEY_ACCOUNT)
+                if token:
+                    return token
+            except Exception as e:
+                logger.warning(f"Secret Service retrieval failed: {e}")
+        
+        return self._retrieve_encrypted_file()
+    
+    def _clear_linux(self) -> bool:
+        """Clear Linux Secret Service entry."""
+        if KEYRING_AVAILABLE:
+            try:
+                keyring.delete_password(self.KEY_SERVICE, self.KEY_ACCOUNT)
+            except Exception:
+                pass
         return self._clear_encrypted_file()
     
     # ==========================================

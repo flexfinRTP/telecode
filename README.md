@@ -1,4 +1,4 @@
-# 🚀 TeleCode v0.1.1
+# 🚀 TeleCode v0.1.10
 
 **Voice-to-Code, From Anywhere**
 
@@ -7,13 +7,14 @@
 [![Security: Hardened](https://img.shields.io/badge/Security-Hardened-brightgreen.svg)](#security)
 [![OWASP: Compliant](https://img.shields.io/badge/OWASP-Compliant-blue.svg)](docs/SECURITY_AUDIT.md)
 [![Download](https://img.shields.io/badge/Download-Latest%20Release-blue.svg)](https://github.com/flexfinRTP/telecode/releases/latest)
+[![Cross-Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](#-download--install)
 
 Control Cursor AI from your phone via Telegram. **Voice-to-code** that works from anywhere — uses your existing Cursor subscription with **zero API costs**.
 
 > 🎤 **Speak your code changes** • 🌍 **Works from anywhere** • 💰 **No API fees** • 🔒 **Works even with laptop locked**
 
 > 🔒 **Security Hardened**: [Full security audit](docs/SECURITY_AUDIT.md) with token encryption, prompt injection defense, and rate limiting.
-> 🤖 **v0.1.1**: Model selection (Opus/Sonnet/Haiku/Gemini/GPT) + Cursor-style action buttons (Keep All, Undo All, Continue)
+> 🌍 **v0.1.10**: Full cross-platform support (Windows, macOS, Linux) with platform-specific headless modes
 
 ---
 
@@ -23,9 +24,9 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 
 | Platform | Download | Size |
 |----------|----------|------|
-| 🪟 **Windows** | [**TeleCode_Setup_Windows.exe**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_Setup_v0.1.1_Windows.exe) | ~50 MB |
-| 🍎 **macOS** | [**TeleCode_macOS.dmg**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.1_macOS.dmg) | ~45 MB |
-| 🐧 **Linux** | [**TeleCode_Linux.tar.gz**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.1_Linux.tar.gz) | ~40 MB |
+| 🪟 **Windows** | [**TeleCode_Setup_Windows.exe**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_Setup_v0.1.10_Windows.exe) | ~50 MB |
+| 🍎 **macOS** | [**TeleCode_macOS.dmg**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.10_macOS.dmg) | ~45 MB |
+| 🐧 **Linux** | [**TeleCode_Linux.tar.gz**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.10_Linux.tar.gz) | ~40 MB |
 
 > 📦 **No Python required!** The installers include everything bundled.
 
@@ -34,10 +35,10 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 <details>
 <summary><b>🪟 Windows</b></summary>
 
-1. Download `TeleCode_Setup_v0.1.1_Windows.exe`
+1. Download `TeleCode_Setup_v0.1.10_Windows.exe`
 2. Run the installer (right-click → "Run as administrator" if needed)
 3. Follow the setup wizard
-4. Optional: Create TSCON shortcuts for screen lock while running
+4. Optional: Create TSCON shortcuts for screen lock while running (system tray → Secure Lock)
 5. Launch TeleCode from Start Menu or Desktop
 
 </details>
@@ -45,11 +46,11 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 <details>
 <summary><b>🍎 macOS</b></summary>
 
-1. Download `TeleCode_v0.1.1_macOS.dmg`
+1. Download `TeleCode_v0.1.10_macOS.dmg`
 2. Open the DMG file
 3. Drag TeleCode to your Applications folder
 4. First launch: Right-click → Open (to bypass Gatekeeper)
-5. Grant microphone permission if using voice features
+5. Grant microphone and accessibility permissions if prompted
 
 </details>
 
@@ -58,12 +59,16 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 
 ```bash
 # Download and extract
-wget https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.1_Linux.tar.gz
-tar -xzvf TeleCode_v0.1.1_Linux.tar.gz
-cd TeleCode_v0.1.1_Linux
+wget https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.10_Linux.tar.gz
+tar -xzvf TeleCode_v0.1.10_Linux.tar.gz
+cd TeleCode_v0.1.10_Linux
 
 # Install (adds to ~/.local/bin and creates .desktop entry)
 ./install.sh
+
+# Optional: Install headless mode dependencies
+sudo apt install xvfb xdotool
+pip install pyvirtualdisplay
 
 # Run
 telecode
@@ -237,10 +242,17 @@ TeleCode stores configuration in a `.env` file. You can configure via:
 ### Navigation
 | Command | Description |
 |---------|-------------|
-| `/cd [path]` | Change directory |
+| `/cd [path]` | Change directory (shows Cursor status) |
 | `/ls [path]` | List files |
 | `/read [file]` | Read file contents |
 | `/pwd` | Show current path |
+
+### Project & IDE
+| Command | Description |
+|---------|-------------|
+| `/create` | Create new project (interactive wizard) |
+| `/cursor` | Check Cursor IDE status |
+| `/cursor open` | Launch Cursor for current workspace |
 
 ### AI (Headless)
 | Command | Description |
@@ -347,9 +359,60 @@ Bot runs: git diff --stat
 User sees: "3 files changed, +50 insertions"
 ```
 
-### Fallback: TSCON Method (Advanced)
+### GUI Automation Mode (Advanced)
 
-If you need **full GUI** features while locked (not recommended), see [docs/TSCON.md](docs/TSCON.md).
+For full Cursor Composer control (clickable AI buttons, visual feedback), TeleCode offers platform-specific headless modes:
+
+| Platform | Headless Method | How It Works |
+|----------|-----------------|--------------|
+| 🪟 **Windows** | **TSCON** | Disconnects display while session stays active. GUI automation works perfectly. See [docs/TSCON.md](docs/TSCON.md) |
+| 🐧 **Linux** | **Xvfb** | Virtual X framebuffer. Creates invisible display for GUI automation. Toggle from system tray. |
+| 🍎 **macOS** | **Virtual Display** | Requires external setup (BetterDummy, VNC, or hardware adapter). `caffeinate` prevents sleep automatically. |
+
+<details>
+<summary><b>🪟 Windows TSCON (Recommended for Windows)</b></summary>
+
+TSCON keeps your Windows session fully active while the display is disconnected:
+
+```batch
+# Quick Lock (from TeleCode tray icon)
+Right-click TeleCode tray → Quick Lock
+
+# Or run the batch file as Administrator
+tscon_secure_lock.bat
+```
+
+See [docs/TSCON.md](docs/TSCON.md) for full details.
+
+</details>
+
+<details>
+<summary><b>🐧 Linux Xvfb Setup</b></summary>
+
+```bash
+# Install Xvfb
+sudo apt install xvfb
+
+# Install Python wrapper
+pip install pyvirtualdisplay
+
+# Optional: Install xdotool for window management
+sudo apt install xdotool
+```
+
+Toggle virtual display from the TeleCode system tray icon.
+
+</details>
+
+<details>
+<summary><b>🍎 macOS Notes</b></summary>
+
+macOS restricts accessibility APIs when the screen is locked. Options:
+- **caffeinate** - TeleCode runs this automatically to prevent sleep
+- **Virtual display adapter** - BetterDummy, Deskreen, or hardware HDMI adapter
+- **VNC** - Screen sharing to a virtual display
+
+</details>
 
 ---
 
@@ -357,13 +420,15 @@ If you need **full GUI** features while locked (not recommended), see [docs/TSCO
 
 ### Pre-Built Installers
 
-Download installers from [GitHub Releases](https://github.com/flexfinRTP/telecode/releases/latest):
+Download the installer **for your platform** from [GitHub Releases](https://github.com/flexfinRTP/telecode/releases/latest):
 
 | Platform | File | Notes |
 |----------|------|-------|
-| Windows | `TeleCode_Setup_v*.exe` | Full installer with TSCON shortcuts |
-| macOS | `TeleCode_v*_macOS.dmg` | Drag-and-drop .app bundle |
-| Linux | `TeleCode_v*_Linux.tar.gz` | Standalone executable + install script |
+| 🪟 **Windows** | `TeleCode_Setup_v*.exe` | Full installer with TSCON shortcuts, system tray icon |
+| 🍎 **macOS** | `TeleCode_v*_macOS.dmg` | Drag-and-drop .app bundle, caffeinate auto-enabled |
+| 🐧 **Linux** | `TeleCode_v*_Linux.tar.gz` | Standalone executable, Xvfb headless mode support |
+
+> **Each platform has its own installer** — download the one that matches your computer.
 
 ### Building From Source
 

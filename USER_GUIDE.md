@@ -13,11 +13,12 @@ Welcome to TeleCode! This guide will help you get started with **voice-to-code f
 3. [Creating New Projects](#creating-new-projects)
 4. [Git Workflow](#git-workflow)
 5. [AI Coding](#ai-coding)
-6. [Model Selection](#-model-selection) ← **NEW!**
+6. [Model Selection](#-model-selection)
 7. [Voice Commands](#voice-commands)
 8. [Navigation](#navigation)
-9. [Tips & Tricks](#tips--tricks)
-10. [Troubleshooting](#troubleshooting)
+9. [Headless Mode (Locked Screen)](#-headless-mode-locked-screen) ← **NEW!**
+10. [Tips & Tricks](#tips--tricks)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -311,7 +312,8 @@ Bot: ✅ Prompt Sent to Cursor!
 | ▶️ Run | **Approve command** | When AI wants to run a script, approve it |
 | 🌐 Search | **Approve web search** | When AI wants to search the web, approve it |
 | 🚫 Cancel | **Cancel action** | Cancel any pending AI action (Escape) |
-| ➡️ Continue | **Continue AI** | Send "continue" to keep AI working |
+| ➡️ Continue | **Continue AI** | Press Continue button (Enter) |
+| 🛑 Stop | **Stop generation** | Stop current AI generation (Ctrl+Shift+Backspace) |
 | ❌ Reject | Discard in Cursor | Uses Escape or Ctrl+Z |
 | ⚙️ Mode | Change prompt mode | Switch between Agent/Chat |
 | 🧹 Cleanup | Close old agents | Closes oldest agent tabs when >5 |
@@ -683,6 +685,86 @@ Bot: ⛔ Access denied: Access to .env files is blocked
 
 ---
 
+## 🖥️ Headless Mode (Locked Screen)
+
+TeleCode works even when your laptop screen is locked! Here's how each platform handles it:
+
+### 🪟 Windows: TSCON
+
+**TSCON** disconnects your display while keeping your session active. Perfect for GUI automation!
+
+**Quick Start:**
+1. Right-click the TeleCode tray icon (near the clock)
+2. Click **"🛡️ Secure Lock"**
+3. Screen goes black, but TeleCode keeps working!
+
+**From Command Line (Admin required):**
+```batch
+tscon_secure_lock.bat
+```
+
+**Features:**
+- ✅ Full GUI automation (Cursor Composer buttons work)
+- ✅ Blocks remote desktop apps for security
+- ✅ Auto-lock after 30 minutes
+- ✅ Physical access only to reconnect
+
+See [docs/TSCON.md](docs/TSCON.md) for full details.
+
+### 🐧 Linux: Xvfb (Virtual Display)
+
+**Xvfb** creates a virtual X server for headless GUI automation.
+
+**Setup:**
+```bash
+# Install Xvfb
+sudo apt install xvfb
+
+# Install Python wrapper
+pip install pyvirtualdisplay
+
+# Optional: Window management
+sudo apt install xdotool
+```
+
+**Usage:**
+1. Right-click the TeleCode tray icon
+2. Click **"🖥️ Start Virtual Display"**
+3. Lock your screen normally — TeleCode keeps working!
+
+**How it works:**
+- Creates invisible display (e.g., `:99`)
+- Cursor runs in the virtual display
+- pyautogui works without physical monitor
+
+### 🍎 macOS: caffeinate + Virtual Display
+
+macOS is more restrictive with locked-screen automation.
+
+**What TeleCode does automatically:**
+- Runs `caffeinate -dims` to prevent sleep
+- Keeps the system awake for remote commands
+
+**For full headless GUI:**
+macOS requires additional setup:
+1. **Virtual Display Adapter** - BetterDummy, Deskreen, or hardware HDMI adapter
+2. **VNC** - Screen sharing to a virtual display
+
+**Without virtual display:**
+- Git commands work ✅
+- Voice transcription works ✅
+- GUI automation (Accept/Reject buttons) may not work when screen is locked
+
+### Quick Reference
+
+| Platform | Headless Method | System Tray Option | Setup Required |
+|----------|-----------------|-------------------|----------------|
+| 🪟 Windows | TSCON | Secure Lock | None (built-in) |
+| 🐧 Linux | Xvfb | Start Virtual Display | `apt install xvfb` |
+| 🍎 macOS | caffeinate | Auto-enabled | Virtual adapter for full GUI |
+
+---
+
 ## Tips & Tricks
 
 ### 1. Quick Status Check
@@ -843,9 +925,10 @@ TeleCode has enterprise-grade security to protect your system.
 ### Token Protection
 
 Your bot token is stored in an **encrypted vault**, not plaintext:
-- **Windows**: Uses DPAPI encryption
-- **macOS**: Uses Keychain
-- **Linux**: Uses encrypted file with machine-specific key
+- **Windows**: Uses DPAPI (Data Protection API)
+- **macOS**: Uses Keychain via `security` command
+- **Linux**: Uses Secret Service (GNOME Keyring / KWallet) via `keyring` library
+- **Fallback**: Encrypted file with machine-specific key (all platforms)
 
 ### Prompt Injection Defense
 
@@ -888,12 +971,18 @@ Bot: ⛔ SECURITY ALERT
 | Commit | `/commit [msg]` |
 | Push | `/push` |
 | Pull | `/pull` |
+| View log | `/log` |
+| List branches | `/branch` |
 | Undo changes | `/revert CONFIRM` |
 | AI prompt | `/ai [prompt]` |
+| **Select model** | `/model` |
+| Quick model switch | `/model opus`, `/model haiku` |
+| List models | `/models` |
 | **Open Cursor** | `/cursor` or `/cursor open` 💻 |
 | Change folder | `/cd [path]` |
 | List files | `/ls` |
 | Read file | `/read [file]` |
+| Current path | `/pwd` |
 | System info | `/info` |
 
 ---

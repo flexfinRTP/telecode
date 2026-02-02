@@ -621,6 +621,124 @@ class ConfigurationGUI:
             ).pack(side="left", padx=(10, 0))
         
         # ==========================================
+        # Virtual Display Section (Linux Only)
+        # ==========================================
+        elif sys.platform.startswith("linux"):
+            vdisplay_group = tk.LabelFrame(
+                main_frame,
+                text=" 🖥️ Virtual Display (Headless Mode) ",
+                font=("Tahoma", 8, "bold"),
+                bg=XP_COLORS["bg_groupbox"],
+                fg=XP_COLORS["text"],
+                padx=10,
+                pady=8
+            )
+            vdisplay_group.pack(fill="x", pady=(0, 10))
+            
+            vdisplay_info = tk.Label(
+                vdisplay_group,
+                text="Run TeleCode headless with a virtual display (Xvfb). This allows GUI automation\neven without a physical monitor — the Linux equivalent of Windows TSCON.",
+                font=("Tahoma", 7),
+                fg="#666666",
+                bg=XP_COLORS["bg_groupbox"],
+                justify="left"
+            )
+            vdisplay_info.pack(anchor="w")
+            
+            # Check if Xvfb is available
+            import shutil
+            xvfb_available = shutil.which("Xvfb") is not None
+            pyvd_available = False
+            try:
+                import pyvirtualdisplay
+                pyvd_available = True
+            except ImportError:
+                pass
+            
+            status_text = "✅ Ready" if (xvfb_available and pyvd_available) else "⚠️ Setup Required"
+            status_color = XP_COLORS["success"] if (xvfb_available and pyvd_available) else "#CC6600"
+            
+            status_frame = tk.Frame(vdisplay_group, bg=XP_COLORS["bg_groupbox"])
+            status_frame.pack(fill="x", pady=(5, 5))
+            
+            tk.Label(
+                status_frame,
+                text=f"Status: {status_text}",
+                font=("Tahoma", 8, "bold"),
+                fg=status_color,
+                bg=XP_COLORS["bg_groupbox"]
+            ).pack(side="left")
+            
+            if not xvfb_available:
+                tk.Label(
+                    vdisplay_group,
+                    text="📦 Install Xvfb: sudo apt install xvfb",
+                    font=("Tahoma", 7),
+                    fg="#666666",
+                    bg=XP_COLORS["bg_groupbox"]
+                ).pack(anchor="w")
+            
+            if not pyvd_available:
+                tk.Label(
+                    vdisplay_group,
+                    text="📦 Install pyvirtualdisplay: pip install pyvirtualdisplay",
+                    font=("Tahoma", 7),
+                    fg="#666666",
+                    bg=XP_COLORS["bg_groupbox"]
+                ).pack(anchor="w")
+            
+            if xvfb_available and pyvd_available:
+                tray_note = tk.Label(
+                    vdisplay_group,
+                    text="💡 TIP: Use the system tray icon to toggle virtual display mode!",
+                    font=("Tahoma", 7, "bold"),
+                    fg=XP_COLORS["success"],
+                    bg=XP_COLORS["bg_groupbox"]
+                )
+                tray_note.pack(anchor="w", pady=(5, 0))
+        
+        # ==========================================
+        # macOS Info Section (macOS Only)
+        # ==========================================
+        elif sys.platform == "darwin":
+            macos_group = tk.LabelFrame(
+                main_frame,
+                text=" 🍎 Headless Mode (macOS) ",
+                font=("Tahoma", 8, "bold"),
+                bg=XP_COLORS["bg_groupbox"],
+                fg=XP_COLORS["text"],
+                padx=10,
+                pady=8
+            )
+            macos_group.pack(fill="x", pady=(0, 10))
+            
+            macos_info = tk.Label(
+                macos_group,
+                text="macOS requires external setup for headless GUI automation.\nOptions: virtual display adapter, VNC, or 'caffeinate' to prevent sleep.",
+                font=("Tahoma", 7),
+                fg="#666666",
+                bg=XP_COLORS["bg_groupbox"],
+                justify="left"
+            )
+            macos_info.pack(anchor="w")
+            
+            tk.Label(
+                macos_group,
+                text="💡 caffeinate -dims — prevents sleep (TeleCode does this automatically)",
+                font=("Tahoma", 7),
+                fg=XP_COLORS["success"],
+                bg=XP_COLORS["bg_groupbox"]
+            ).pack(anchor="w", pady=(5, 0))
+            
+            tk.Label(
+                macos_group,
+                text="🔌 For true headless: use a virtual display adapter (BetterDummy, Deskreen)",
+                font=("Tahoma", 7),
+                fg="#666666",
+                bg=XP_COLORS["bg_groupbox"]
+            ).pack(anchor="w")
+        
+        # ==========================================
         # Status Label
         # ==========================================
         self.status_var = tk.StringVar()
@@ -933,29 +1051,41 @@ DEFAULT_MODEL={selected_model_alias}
     def _save_and_start(self):
         """Save configuration and start the bot."""
         if self._save_config():
-            # Show confirmation splash
-            messagebox.showinfo(
-                "🚀 TeleCode is Starting!",
-                "✅ Configuration saved!\n\n"
-                "TeleCode is now running in the background.\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                "📱 CONTROL VIA TELEGRAM\n"
-                "   Open your bot and send /help\n\n"
-                "🖥️ SYSTEM TRAY\n"
-                "   Look for the green TeleCode icon\n"
-                "   near your clock (bottom right)\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                "Right-click the tray icon to:\n"
-                "• View status\n"
-                "• Open settings\n"
-                "• Lock screen (TSCON)\n"
-                "• Stop TeleCode"
-            )
-            
             if self.on_save_callback:
+                # Show confirmation splash for new bot start
+                messagebox.showinfo(
+                    "🚀 TeleCode is Starting!",
+                    "✅ Configuration saved!\n\n"
+                    "TeleCode is now running in the background.\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "📱 CONTROL VIA TELEGRAM\n"
+                    "   Open your bot and send /help\n\n"
+                    "🖥️ SYSTEM TRAY\n"
+                    "   Look for the green TeleCode icon\n"
+                    "   near your clock (bottom right)\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "Right-click the tray icon to:\n"
+                    "• View status\n"
+                    "• Open settings\n"
+                    "• Lock screen (TSCON)\n"
+                    "• Stop TeleCode"
+                )
                 self.root.destroy()
                 self.on_save_callback()
             else:
+                # Settings-only mode - bot is already running
+                messagebox.showinfo(
+                    "✅ Settings Updated",
+                    "✅ Configuration saved!\n\n"
+                    "Your settings have been updated.\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "⚠️ NOTE: Some changes may require\n"
+                    "   restarting TeleCode to take effect.\n\n"
+                    "To restart:\n"
+                    "1. Right-click TeleCode tray icon\n"
+                    "2. Click 'Stop TeleCode'\n"
+                    "3. Run TeleCode again"
+                )
                 self.root.destroy()
     
     

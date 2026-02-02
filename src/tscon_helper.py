@@ -247,9 +247,11 @@ def run_tscon(secure_mode: bool = False, watchdog_minutes: int = 30) -> tuple[bo
         security_status.append(f"Watchdog: {watchdog_minutes}min")
     
     try:
-        # Run tscon command
+        # Run tscon command with full path (required when PATH may not include System32)
+        tscon_path = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'tscon.exe')
+        
         result = subprocess.run(
-            ["tscon", session_name, "/dest:console"],
+            [tscon_path, session_name, "/dest:console"],
             capture_output=True,
             text=True,
             timeout=10
@@ -265,12 +267,13 @@ def run_tscon(secure_mode: bool = False, watchdog_minutes: int = 30) -> tuple[bo
             if secure_mode:
                 security.restore_remote_desktop()
                 security.stop_watchdog()
-            return False, f"TSCON failed: {result.stderr or result.stdout}"
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            return False, f"TSCON failed: {error_msg}\nSession: {session_name}"
             
     except subprocess.TimeoutExpired:
         return False, "TSCON command timed out"
     except FileNotFoundError:
-        return False, "TSCON command not found. Are you on Windows?"
+        return False, f"TSCON not found at {tscon_path}. Are you on Windows?"
     except Exception as e:
         return False, f"Error running TSCON: {e}"
 
@@ -345,12 +348,17 @@ echo       (Will lock in 30 minutes if not reconnected)
 
 echo.
 echo [3/3] Disconnecting session...
-tscon %sessionname% /dest:console
+REM Use full path to tscon.exe
+%SystemRoot%\\System32\\tscon.exe %sessionname% /dest:console
 
 if errorlevel 1 (
     echo.
     echo ERROR: TSCON failed!
-    echo Make sure to run this as Administrator.
+    echo.
+    echo Possible causes:
+    echo   - Not running as Administrator
+    echo   - Running over Remote Desktop
+    echo   - Windows Home edition
     echo.
     echo Restoring Remote Desktop...
     reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f > nul 2>&1
@@ -394,12 +402,17 @@ echo.
 pause
 
 echo Disconnecting session...
-tscon %sessionname% /dest:console
+REM Use full path to tscon.exe
+%SystemRoot%\\System32\\tscon.exe %sessionname% /dest:console
 
 if errorlevel 1 (
     echo.
     echo ERROR: TSCON failed!
-    echo Make sure to run this as Administrator.
+    echo.
+    echo Possible causes:
+    echo   - Not running as Administrator
+    echo   - Running over Remote Desktop
+    echo   - Windows Home edition
     pause
 )
 '''
@@ -434,7 +447,8 @@ def create_tscon_files_in_project() -> tuple[bool, str]:
         quick_lock = '''@echo off
 REM TeleCode Quick Lock - Run as Administrator
 echo Disconnecting session for TeleCode...
-tscon %sessionname% /dest:console
+REM Use full path to tscon.exe
+%SystemRoot%\\System32\\tscon.exe %sessionname% /dest:console
 '''
         
         # Verbose lock script (with explanations)
@@ -478,14 +492,17 @@ REM ============================================
 
 @echo.
 @echo Disconnecting session...
-tscon %sessionname% /dest:console
+REM Use full path to tscon.exe
+%SystemRoot%\\System32\\tscon.exe %sessionname% /dest:console
 
 @if errorlevel 1 (
     @echo.
     @echo ERROR: TSCON command failed!
     @echo.
-    @echo Make sure you're running this as Administrator:
-    @echo   Right-click ^> "Run as administrator"
+    @echo Possible causes:
+    @echo   - Not running as Administrator
+    @echo   - Running over Remote Desktop
+    @echo   - Windows Home edition
     @echo.
     @pause
 )

@@ -331,5 +331,65 @@ def format_system_status() -> str:
     lock_status = "🔒 Locked" if ScreenLockDetector.is_locked() else "🔓 Unlocked"
     lines.append(f"  Screen: {lock_status}")
     
+    # Add headless mode info
+    headless_info = get_headless_info()
+    if headless_info.get("available"):
+        method = headless_info.get("method", "Unknown")
+        status = "✅ Active" if headless_info.get("active") else "⏸️ Available"
+        lines.append(f"  Headless: {status} ({method})")
+    
     return "\n".join(lines)
+
+
+def get_headless_info() -> dict:
+    """
+    Get information about headless operation capabilities.
+    
+    Returns:
+        Dictionary with headless mode information.
+    """
+    info = {
+        "platform": platform.system(),
+        "available": False,
+        "active": False,
+        "method": None,
+    }
+    
+    if IS_WINDOWS:
+        # Windows uses TSCON
+        info["method"] = "TSCON"
+        info["available"] = True
+        # Check if session is disconnected (TSCON active)
+        # This is a simplified check - actual detection is complex
+        info["active"] = False  # Would need session query to detect
+        
+    elif IS_MACOS:
+        # macOS limited support
+        info["method"] = "caffeinate"
+        info["available"] = True  # caffeinate is always available
+        info["note"] = "Full headless requires virtual display adapter"
+        
+    elif IS_LINUX:
+        # Linux uses Xvfb
+        import shutil
+        xvfb_available = shutil.which("Xvfb") is not None
+        pyvd_available = False
+        try:
+            import pyvirtualdisplay
+            pyvd_available = True
+        except ImportError:
+            pass
+        
+        info["method"] = "Xvfb"
+        info["available"] = xvfb_available and pyvd_available
+        info["xvfb_installed"] = xvfb_available
+        info["pyvirtualdisplay_installed"] = pyvd_available
+        
+        # Check if running in virtual display
+        display = os.environ.get("DISPLAY", "")
+        if display.startswith(":") and not display.startswith(":0"):
+            # Likely a virtual display (e.g., :99)
+            info["active"] = True
+    
+    return info
 

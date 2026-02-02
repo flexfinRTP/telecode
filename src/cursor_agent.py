@@ -5,8 +5,10 @@ TeleCode v0.1 - Cursor Agent Bridge
 Automated integration layer for Cursor IDE AI control.
 
 This module SENDS prompts directly to Cursor Composer via
-keyboard automation. Works with TSCON locked sessions because
-the Windows session remains active.
+keyboard automation. Works cross-platform:
+- Windows: TSCON locked sessions
+- macOS: Virtual display or caffeinate
+- Linux: Xvfb virtual framebuffer
 
 ARCHITECTURE:
 1. Opens Cursor with workspace (if not already open)
@@ -22,6 +24,11 @@ SECURITY:
 - Workspace must be in DEV_ROOT sandbox
 - Full audit logging
 
+CROSS-PLATFORM SUPPORT:
+- Windows: Win32 API for window management
+- macOS: AppleScript for window management, Cmd instead of Ctrl
+- Linux: xdotool/wmctrl for window management, Xvfb for headless
+
 ============================================
 """
 
@@ -34,6 +41,7 @@ import subprocess
 import time
 import threading
 import asyncio
+import platform
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Tuple, Dict, Any, List
@@ -41,6 +49,14 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 logger = logging.getLogger("telecode.cursor_agent")
+
+# Platform detection
+IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+IS_LINUX = sys.platform.startswith("linux")
+
+# Keyboard modifier for shortcuts (Cmd on macOS, Ctrl elsewhere)
+MODIFIER_KEY = "command" if IS_MACOS else "ctrl"
 
 # Keyboard automation imports (with fallbacks)
 AUTOMATION_AVAILABLE = False
@@ -55,8 +71,32 @@ except ImportError as e:
     logger.warning(f"Keyboard automation not available: {e}")
     logger.warning("Install with: pip install pyautogui pyperclip")
 
+# OCR Support for text extraction from screenshots
+OCR_AVAILABLE = False
+try:
+    import pytesseract
+    from PIL import Image
+    OCR_AVAILABLE = True
+    logger.info("OCR support available (pytesseract)")
+except ImportError:
+    logger.info("pytesseract not installed - OCR text extraction unavailable")
+    logger.info("Install with: pip install pytesseract pillow")
+    logger.info("Also requires Tesseract OCR engine: https://github.com/tesseract-ocr/tesseract")
+
+# Virtual display support for Linux headless operation
+VIRTUAL_DISPLAY_AVAILABLE = False
+_virtual_display = None
+if IS_LINUX:
+    try:
+        from pyvirtualdisplay import Display
+        VIRTUAL_DISPLAY_AVAILABLE = True
+        logger.info("Virtual display support available (pyvirtualdisplay)")
+    except ImportError:
+        logger.info("pyvirtualdisplay not installed - headless mode unavailable on Linux")
+        logger.info("Install with: pip install pyvirtualdisplay")
+
 # Windows-specific imports for window management
-if sys.platform == "win32":
+if IS_WINDOWS:
     try:
         import ctypes
         from ctypes import wintypes
@@ -65,6 +105,17 @@ if sys.platform == "win32":
         WINDOWS_API_AVAILABLE = False
 else:
     WINDOWS_API_AVAILABLE = False
+
+# Linux window management tools detection
+XDOTOOL_AVAILABLE = False
+WMCTRL_AVAILABLE = False
+if IS_LINUX:
+    XDOTOOL_AVAILABLE = shutil.which("xdotool") is not None
+    WMCTRL_AVAILABLE = shutil.which("wmctrl") is not None
+    if XDOTOOL_AVAILABLE:
+        logger.info("xdotool available for Linux window management")
+    if WMCTRL_AVAILABLE:
+        logger.info("wmctrl available for Linux window management")
 
 
 class AgentState(Enum):
@@ -125,27 +176,41 @@ class WindowManager:
     Cross-platform window management for Cursor IDE.
     
     Handles finding, focusing, and interacting with Cursor windows.
-    Works with TSCON locked sessions on Windows.
+    Platform support:
+    - Windows: Win32 API (works with TSCON locked sessions)
+    - macOS: AppleScript
+    - Linux: xdotool/wmctrl
     """
     
     @staticmethod
-    def find_cursor_window(workspace_name: Optional[str] = None) -> Optional[int]:
+    def find_cursor_window(workspace_name: Optional[str] = None) -> Optional[Any]:
         """
-        Find the Cursor IDE window handle.
+        Find the Cursor IDE window.
         
         Args:
             workspace_name: Optional workspace name to match in window title
         
         Returns:
-            Window handle (HWND on Windows) or None if not found
+            Window identifier (HWND on Windows, window ID on Linux, app name on macOS)
+            or None if not found
         """
-        if sys.platform != "win32" or not WINDOWS_API_AVAILABLE:
+        if IS_WINDOWS:
+            return WindowManager._find_cursor_window_windows(workspace_name)
+        elif IS_MACOS:
+            return WindowManager._find_cursor_window_macos(workspace_name)
+        elif IS_LINUX:
+            return WindowManager._find_cursor_window_linux(workspace_name)
+        return None
+    
+    @staticmethod
+    def _find_cursor_window_windows(workspace_name: Optional[str] = None) -> Optional[int]:
+        """Windows: Find Cursor window using Win32 API."""
+        if not WINDOWS_API_AVAILABLE:
             return None
         
         try:
             user32 = ctypes.windll.user32
             
-            # Callback to enumerate windows
             EnumWindowsProc = ctypes.WINFUNCTYPE(
                 wintypes.BOOL, 
                 wintypes.HWND, 
@@ -157,35 +222,118 @@ class WindowManager:
             def enum_callback(hwnd, lparam):
                 nonlocal found_hwnd
                 
-                # Get window title
                 length = user32.GetWindowTextLengthW(hwnd)
                 if length > 0:
                     buffer = ctypes.create_unicode_buffer(length + 1)
                     user32.GetWindowTextW(hwnd, buffer, length + 1)
                     title = buffer.value
                     
-                    # Check if it's a Cursor window
-                    # Cursor windows typically have "Cursor" in the title or end with "- Cursor"
                     if "Cursor" in title or title.endswith("- Cursor"):
-                        # Check if window is visible
                         if user32.IsWindowVisible(hwnd):
-                            # If workspace_name is provided, check if it matches
                             if workspace_name:
                                 if workspace_name.lower() in title.lower():
                                     found_hwnd = hwnd
-                                    return False  # Stop enumeration
+                                    return False
                             else:
                                 found_hwnd = hwnd
-                                return False  # Stop enumeration
+                                return False
                 
-                return True  # Continue enumeration
+                return True
             
             user32.EnumWindows(EnumWindowsProc(enum_callback), 0)
-            
             return found_hwnd
             
         except Exception as e:
-            logger.warning(f"Failed to find Cursor window: {e}")
+            logger.warning(f"Failed to find Cursor window (Windows): {e}")
+            return None
+    
+    @staticmethod
+    def _find_cursor_window_macos(workspace_name: Optional[str] = None) -> Optional[str]:
+        """macOS: Check if Cursor is running using AppleScript."""
+        try:
+            # Check if Cursor app is running
+            script = '''
+            tell application "System Events"
+                set cursorRunning to (name of processes) contains "Cursor"
+            end tell
+            return cursorRunning
+            '''
+            result = subprocess.run(
+                ['osascript', '-e', script],
+                capture_output=True, text=True, timeout=5
+            )
+            
+            if result.returncode == 0 and 'true' in result.stdout.lower():
+                # If workspace_name provided, check window title
+                if workspace_name:
+                    title_script = '''
+                    tell application "System Events"
+                        tell process "Cursor"
+                            set windowNames to name of every window
+                        end tell
+                    end tell
+                    return windowNames
+                    '''
+                    title_result = subprocess.run(
+                        ['osascript', '-e', title_script],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if workspace_name.lower() in title_result.stdout.lower():
+                        return "Cursor"
+                    return None
+                return "Cursor"
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Failed to find Cursor window (macOS): {e}")
+            return None
+    
+    @staticmethod
+    def _find_cursor_window_linux(workspace_name: Optional[str] = None) -> Optional[str]:
+        """Linux: Find Cursor window using xdotool or wmctrl."""
+        try:
+            if XDOTOOL_AVAILABLE:
+                # Use xdotool to search for window
+                search_name = workspace_name if workspace_name else "Cursor"
+                result = subprocess.run(
+                    ['xdotool', 'search', '--name', search_name],
+                    capture_output=True, text=True, timeout=5
+                )
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    # Return first matching window ID
+                    window_ids = result.stdout.strip().split('\n')
+                    for wid in window_ids:
+                        # Verify it's a Cursor window
+                        name_result = subprocess.run(
+                            ['xdotool', 'getwindowname', wid],
+                            capture_output=True, text=True, timeout=5
+                        )
+                        if 'cursor' in name_result.stdout.lower():
+                            return wid
+                    return window_ids[0] if window_ids else None
+                    
+            elif WMCTRL_AVAILABLE:
+                # Use wmctrl to list windows
+                result = subprocess.run(
+                    ['wmctrl', '-l'],
+                    capture_output=True, text=True, timeout=5
+                )
+                
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        if 'cursor' in line.lower():
+                            if workspace_name and workspace_name.lower() not in line.lower():
+                                continue
+                            # Extract window ID (first column)
+                            parts = line.split()
+                            if parts:
+                                return parts[0]
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Failed to find Cursor window (Linux): {e}")
             return None
     
     @staticmethod
@@ -200,19 +348,15 @@ class WindowManager:
             CursorStatus enum value
         """
         try:
-            # Check if any Cursor process is running
             if not WindowManager.is_cursor_running():
                 return CursorStatus.NOT_RUNNING
             
-            # Check if Cursor window exists
-            hwnd = WindowManager.find_cursor_window(workspace_name)
-            if hwnd:
+            window = WindowManager.find_cursor_window(workspace_name)
+            if window:
                 return CursorStatus.READY
             elif WindowManager.find_cursor_window():
-                # Cursor is open but maybe different workspace
                 return CursorStatus.RUNNING
             else:
-                # Process running but no window yet
                 return CursorStatus.STARTING
                 
         except Exception as e:
@@ -220,62 +364,121 @@ class WindowManager:
             return CursorStatus.ERROR
     
     @staticmethod
-    def focus_cursor_window(hwnd: Optional[int] = None) -> bool:
+    def focus_cursor_window(window_id: Optional[Any] = None) -> bool:
         """
         Focus the Cursor window.
         
         Args:
-            hwnd: Window handle (will search if not provided)
+            window_id: Window identifier (will search if not provided)
             
         Returns:
             True if window was focused successfully
         """
-        if sys.platform != "win32" or not WINDOWS_API_AVAILABLE:
-            # On non-Windows, just hope Cursor is focused
-            return True
+        if IS_WINDOWS:
+            return WindowManager._focus_cursor_window_windows(window_id)
+        elif IS_MACOS:
+            return WindowManager._focus_cursor_window_macos()
+        elif IS_LINUX:
+            return WindowManager._focus_cursor_window_linux(window_id)
+        return False
+    
+    @staticmethod
+    def _focus_cursor_window_windows(hwnd: Optional[int] = None) -> bool:
+        """Windows: Focus Cursor window using Win32 API."""
+        if not WINDOWS_API_AVAILABLE:
+            return True  # Assume focused
         
         try:
             user32 = ctypes.windll.user32
             
             if hwnd is None:
-                hwnd = WindowManager.find_cursor_window()
+                hwnd = WindowManager._find_cursor_window_windows()
             
             if hwnd is None:
                 logger.warning("Cursor window not found")
                 return False
             
-            # Restore window if minimized
             SW_RESTORE = 9
             user32.ShowWindow(hwnd, SW_RESTORE)
             
-            # Bring to foreground
-            # First, attach to the thread of the foreground window
             foreground = user32.GetForegroundWindow()
             current_thread = ctypes.windll.kernel32.GetCurrentThreadId()
             foreground_thread = user32.GetWindowThreadProcessId(foreground, None)
             
-            # Attach input threads
             user32.AttachThreadInput(current_thread, foreground_thread, True)
-            
-            # Set foreground
             user32.SetForegroundWindow(hwnd)
             user32.BringWindowToTop(hwnd)
-            
-            # Detach threads
             user32.AttachThreadInput(current_thread, foreground_thread, False)
             
-            # Give it time to focus
             time.sleep(0.3)
-            
             return True
             
         except Exception as e:
-            logger.warning(f"Failed to focus Cursor window: {e}")
+            logger.warning(f"Failed to focus Cursor window (Windows): {e}")
+            return False
+    
+    @staticmethod
+    def _focus_cursor_window_macos() -> bool:
+        """macOS: Focus Cursor window using AppleScript."""
+        try:
+            script = '''
+            tell application "Cursor"
+                activate
+            end tell
+            tell application "System Events"
+                tell process "Cursor"
+                    set frontmost to true
+                end tell
+            end tell
+            '''
+            result = subprocess.run(
+                ['osascript', '-e', script],
+                capture_output=True, text=True, timeout=5
+            )
+            
+            time.sleep(0.3)
+            return result.returncode == 0
+            
+        except Exception as e:
+            logger.warning(f"Failed to focus Cursor window (macOS): {e}")
+            return False
+    
+    @staticmethod
+    def _focus_cursor_window_linux(window_id: Optional[str] = None) -> bool:
+        """Linux: Focus Cursor window using xdotool or wmctrl."""
+        try:
+            if window_id is None:
+                window_id = WindowManager._find_cursor_window_linux()
+            
+            if window_id is None:
+                logger.warning("Cursor window not found")
+                return False
+            
+            if XDOTOOL_AVAILABLE:
+                result = subprocess.run(
+                    ['xdotool', 'windowactivate', '--sync', window_id],
+                    capture_output=True, text=True, timeout=5
+                )
+                time.sleep(0.3)
+                return result.returncode == 0
+                
+            elif WMCTRL_AVAILABLE:
+                result = subprocess.run(
+                    ['wmctrl', '-i', '-a', window_id],
+                    capture_output=True, text=True, timeout=5
+                )
+                time.sleep(0.3)
+                return result.returncode == 0
+            
+            return False
+            
+        except Exception as e:
+            logger.warning(f"Failed to focus Cursor window (Linux): {e}")
             return False
     
     @staticmethod
     def is_cursor_running() -> bool:
-        """Check if Cursor is running."""
+        """Check if Cursor is running (cross-platform)."""
         try:
             import psutil
             for proc in psutil.process_iter(['name']):
@@ -292,7 +495,10 @@ class CursorAgentBridge:
     Bridge between TeleCode and Cursor IDE.
     
     SENDS prompts directly to Cursor Composer via keyboard automation.
-    Works with TSCON locked sessions on Windows.
+    Cross-platform support:
+    - Windows: Works with TSCON locked sessions
+    - macOS: Works with caffeinate or virtual display
+    - Linux: Works with Xvfb virtual display
     """
     
     # TeleCode working directory name
@@ -481,10 +687,10 @@ class CursorAgentBridge:
             
             # Close oldest tabs (they should be leftmost)
             for i in range(agents_to_close):
-                # Ctrl+1 to go to first tab, then Ctrl+W to close it
-                pyautogui.hotkey('ctrl', '1')
+                # Ctrl+1 (Cmd+1 on macOS) to go to first tab, then Ctrl+W to close it
+                pyautogui.hotkey(MODIFIER_KEY, '1')
                 time.sleep(0.2)
-                pyautogui.hotkey('ctrl', 'w')
+                pyautogui.hotkey(MODIFIER_KEY, 'w')
                 time.sleep(0.2)
             
             self.session.agent_count = max_agents
@@ -796,32 +1002,33 @@ class CursorAgentBridge:
             pyperclip.copy(prompt)
             
             # Step 3: Open the appropriate mode
+            # Note: On macOS, Cmd is used instead of Ctrl
             if mode == "agent":
-                # Agent mode: Ctrl+Shift+I - creates new agent, auto-saves files
+                # Agent mode: Ctrl+Shift+I (Cmd+Shift+I on macOS) - creates new agent, auto-saves files
                 # This is the SAFEST mode - you won't lose work!
-                logger.info("Opening new Agent with Ctrl+Shift+I (auto-save mode)...")
-                pyautogui.hotkey('ctrl', 'shift', 'i')
+                logger.info(f"Opening new Agent with {MODIFIER_KEY.title()}+Shift+I (auto-save mode)...")
+                pyautogui.hotkey(MODIFIER_KEY, 'shift', 'i')
                 self.session.agent_count += 1
                 time.sleep(1.0)  # Agent takes longer to initialize
             else:  # chat
-                # Chat mode: Ctrl+L - opens chat panel
+                # Chat mode: Ctrl+L (Cmd+L on macOS) - opens chat panel
                 # Changes are proposed but NOT saved until you click Keep All
-                logger.info("Opening Chat with Ctrl+L (manual accept mode)...")
-                pyautogui.hotkey('ctrl', 'l')
+                logger.info(f"Opening Chat with {MODIFIER_KEY.title()}+L (manual accept mode)...")
+                pyautogui.hotkey(MODIFIER_KEY, 'l')
             time.sleep(self.COMPOSER_OPEN_WAIT)
             
             # Step 4: Clear any existing text and paste prompt
             logger.info("Pasting prompt...")
-            pyautogui.hotkey('ctrl', 'a')  # Select all
+            pyautogui.hotkey(MODIFIER_KEY, 'a')  # Select all
             time.sleep(0.1)
-            pyautogui.hotkey('ctrl', 'v')  # Paste
+            pyautogui.hotkey(MODIFIER_KEY, 'v')  # Paste
             time.sleep(0.2)
             
             # Step 5: Send the prompt
             logger.info("Sending prompt...")
-            # Use Ctrl+Enter for multi-line prompts, Enter for single line
+            # Use Ctrl+Enter (Cmd+Enter on macOS) for multi-line prompts, Enter for single line
             if '\n' in prompt:
-                pyautogui.hotkey('ctrl', 'enter')
+                pyautogui.hotkey(MODIFIER_KEY, 'enter')
             else:
                 pyautogui.press('enter')
             
@@ -988,15 +1195,287 @@ class CursorAgentBridge:
             logger.error(f"Failed to capture screenshot: {e}")
             return None
     
+    def extract_text_from_screenshot(
+        self,
+        screenshot_path: Optional[Path] = None,
+        filter_code_blocks: bool = True
+    ) -> AgentResult:
+        """
+        Extract text from a screenshot using OCR.
+        
+        Filters out code block formatted text (file changes) and returns
+        only the summary/explanation text that Cursor outputs.
+        
+        Args:
+            screenshot_path: Path to screenshot. If None, takes a new one.
+            filter_code_blocks: If True, filters out code-like text
+            
+        Returns:
+            AgentResult with extracted text in data["text"] and data["summary"]
+        """
+        if not OCR_AVAILABLE:
+            return AgentResult(
+                success=False,
+                message="OCR not available",
+                error="Install pytesseract and Tesseract OCR engine. See: https://github.com/tesseract-ocr/tesseract"
+            )
+        
+        try:
+            # Take screenshot if not provided
+            if screenshot_path is None:
+                screenshot_path = self.capture_screenshot()
+            
+            if screenshot_path is None or not Path(screenshot_path).exists():
+                return AgentResult(
+                    success=False,
+                    message="No screenshot available",
+                    error="Could not capture or find screenshot"
+                )
+            
+            # Open the image
+            image = Image.open(screenshot_path)
+            
+            # Run OCR with optimal settings for IDE text
+            # Use --psm 6 for uniform block of text, -l eng for English
+            custom_config = r'--oem 3 --psm 6 -l eng'
+            raw_text = pytesseract.image_to_string(image, config=custom_config)
+            
+            if not raw_text.strip():
+                return AgentResult(
+                    success=True,
+                    message="No text detected in screenshot",
+                    data={
+                        "raw_text": "",
+                        "summary": "",
+                        "line_count": 0
+                    }
+                )
+            
+            # Filter and clean the text
+            if filter_code_blocks:
+                summary_text = self._filter_cursor_output(raw_text)
+            else:
+                summary_text = raw_text.strip()
+            
+            line_count = len(summary_text.split('\n'))
+            
+            logger.info(f"OCR extracted {line_count} lines of text")
+            
+            return AgentResult(
+                success=True,
+                message=f"Extracted {line_count} lines of text",
+                data={
+                    "raw_text": raw_text,
+                    "summary": summary_text,
+                    "line_count": line_count,
+                    "screenshot_path": str(screenshot_path)
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"OCR extraction failed: {e}")
+            return AgentResult(
+                success=False,
+                message="OCR extraction failed",
+                error=str(e)
+            )
+    
+    def _filter_cursor_output(self, raw_text: str) -> str:
+        """
+        Filter Cursor IDE output to extract only summary/explanation text.
+        
+        Removes:
+        - Code blocks (indented code, syntax highlighted blocks)
+        - File path headers (like "src/file.py")
+        - Diff-style lines (starting with +, -, @@)
+        - Line numbers
+        - Import statements
+        - Function/class definitions (standalone technical lines)
+        
+        Keeps:
+        - Natural language explanations
+        - Bullet points and numbered lists
+        - Summary paragraphs from AI
+        
+        Args:
+            raw_text: Raw OCR output
+            
+        Returns:
+            Filtered text with only summary content
+        """
+        import re
+        
+        lines = raw_text.split('\n')
+        filtered_lines = []
+        in_code_block = False
+        consecutive_code_lines = 0
+        
+        for line in lines:
+            stripped = line.strip()
+            
+            # Skip empty lines (but track them for spacing)
+            if not stripped:
+                if filtered_lines and filtered_lines[-1] != '':
+                    filtered_lines.append('')
+                continue
+            
+            # Detect code block markers
+            if stripped.startswith('```') or stripped.startswith('~~~'):
+                in_code_block = not in_code_block
+                continue
+            
+            # Skip if inside explicit code block
+            if in_code_block:
+                continue
+            
+            # Skip patterns that indicate code/technical content
+            skip_patterns = [
+                # Diff markers
+                r'^[\+\-]{2,}',  # --- or +++
+                r'^@@',  # @@ diff markers
+                r'^\+\s',  # + added line
+                r'^-\s',  # - removed line
+                
+                # File paths (like src/file.py, ./path/to, C:\path)
+                r'^[a-zA-Z]:\\',  # Windows paths
+                r'^\.?/[a-zA-Z]',  # Unix paths starting with / or ./
+                r'^\w+/\w+.*\.\w{1,5}$',  # file/path.ext pattern
+                r'^\w+\.\w{2,5}:?\s*$',  # filename.ext alone
+                
+                # Line numbers (1:, 12:, 123:)
+                r'^\d+[:\|]',
+                
+                # Code indicators
+                r'^import\s+\w',  # import statements
+                r'^from\s+\w+\s+import',  # from x import y
+                r'^(def|class|function|const|let|var|public|private)\s+\w',  # definitions
+                r'^\s*[{}()\[\]]+\s*$',  # lone brackets
+                r'^[a-zA-Z_]\w*\s*[=:]\s*[{(\[]',  # variable assignments to objects/arrays
+                r'^\s*return\s',  # return statements
+                r'^\s*(if|else|elif|for|while|switch|case)\s*[\(\{:]',  # control flow
+                r'^\/\*|\*\/|^\/\/',  # comment markers
+                r'^#\s*\w+',  # preprocessor or comment headers (not natural text)
+                r'^\s*@\w+',  # decorators
+                r'^<\/?[a-zA-Z]',  # HTML/XML tags
+                
+                # OCR artifacts / UI elements
+                r'^[\u2500-\u257F]+$',  # box drawing characters
+                r'^[─│┌┐└┘├┤┬┴┼]+$',  # more box drawing
+                r'^\d+\s*(files?|insertions?|deletions?)',  # git stat lines
+                r'^Cursor|^File|^Edit|^View|^Go|^Run|^Terminal|^Help',  # menu items
+            ]
+            
+            should_skip = False
+            for pattern in skip_patterns:
+                if re.match(pattern, stripped, re.IGNORECASE):
+                    should_skip = True
+                    consecutive_code_lines += 1
+                    break
+            
+            if should_skip:
+                # Skip code-like lines
+                continue
+            
+            # Check for heavily indented lines (likely code)
+            leading_spaces = len(line) - len(line.lstrip())
+            if leading_spaces >= 4 and not stripped.startswith(('•', '-', '*', '>', '1', '2', '3', '4', '5', '6', '7', '8', '9')):
+                consecutive_code_lines += 1
+                if consecutive_code_lines > 2:
+                    continue
+            else:
+                consecutive_code_lines = 0
+            
+            # Check if line looks like natural language
+            # Natural text has spaces, common words, punctuation
+            word_count = len(stripped.split())
+            has_common_words = any(word.lower() in stripped.lower() for word in 
+                ['the', 'a', 'an', 'is', 'are', 'was', 'were', 'will', 'would', 'can', 'could',
+                 'this', 'that', 'these', 'those', 'here', 'there', 'have', 'has', 'been',
+                 'i', "i've", "i'm", 'you', 'we', 'they', 'it', 'and', 'or', 'but', 'so',
+                 'because', 'if', 'when', 'while', 'for', 'to', 'of', 'in', 'on', 'at',
+                 'created', 'added', 'updated', 'changed', 'modified', 'fixed', 'removed',
+                 'now', 'should', 'need', 'make', 'made', 'also', 'with', 'from',
+                 'file', 'function', 'method', 'class', 'component', 'module'])
+            
+            # Likely natural language if:
+            # - Has 3+ words
+            # - Contains common English words
+            # - Ends with punctuation
+            # - Starts with bullet/number
+            is_likely_text = (
+                word_count >= 3 and has_common_words or
+                stripped.endswith(('.', '!', '?', ':')) or
+                stripped.startswith(('•', '-', '*', '>', '1.', '2.', '3.', '4.', '5.', 
+                                     '6.', '7.', '8.', '9.', '✓', '✅', '❌', '⚠️', '📝'))
+            )
+            
+            if is_likely_text or (word_count >= 4 and not stripped.endswith(('(', '{', '[', ';', ','))):
+                filtered_lines.append(stripped)
+        
+        # Clean up result
+        result = '\n'.join(filtered_lines)
+        
+        # Remove consecutive empty lines
+        result = re.sub(r'\n{3,}', '\n\n', result)
+        
+        return result.strip()
+    
+    def capture_and_extract_text(self) -> AgentResult:
+        """
+        Capture a screenshot and extract summary text via OCR.
+        
+        Convenience method that combines capture_screenshot and extract_text_from_screenshot.
+        
+        Returns:
+            AgentResult with screenshot path and extracted summary text
+        """
+        # Capture screenshot
+        screenshot_path = self.capture_screenshot()
+        
+        if not screenshot_path:
+            return AgentResult(
+                success=False,
+                message="Failed to capture screenshot",
+                error="Screenshot capture failed"
+            )
+        
+        # Extract text
+        ocr_result = self.extract_text_from_screenshot(screenshot_path, filter_code_blocks=True)
+        
+        if not ocr_result.success:
+            # Return partial success with screenshot but no text
+            return AgentResult(
+                success=True,
+                message="Screenshot captured but OCR failed",
+                data={
+                    "screenshot_path": str(screenshot_path),
+                    "summary": "",
+                    "ocr_error": ocr_result.error
+                }
+            )
+        
+        # Combine results
+        return AgentResult(
+            success=True,
+            message=f"Captured screenshot and extracted {ocr_result.data.get('line_count', 0)} lines",
+            data={
+                "screenshot_path": str(screenshot_path),
+                "summary": ocr_result.data.get("summary", ""),
+                "raw_text": ocr_result.data.get("raw_text", ""),
+                "line_count": ocr_result.data.get("line_count", 0)
+            }
+        )
+    
     async def send_prompt_and_wait(
         self,
         prompt: str,
         status_callback: Optional[callable] = None,
         model: Optional[str] = None,
         mode: Optional[str] = None,
-        timeout: float = 90.0,
-        poll_interval: float = 2.0,
-        stable_threshold: int = 3
+        timeout: float = 300.0,
+        poll_interval: float = 3.0,
+        stable_threshold: int = 10,
+        min_processing_time: float = 15.0
     ) -> AgentResult:
         """
         Send a prompt to Cursor and wait for AI to complete processing.
@@ -1007,14 +1486,19 @@ class CursorAgentBridge:
         3. Reports status via callback
         4. Takes a screenshot when complete
         
+        IMPORTANT: AI completion detection is based on stable file changes.
+        We require a minimum processing time AND stable file count before
+        declaring completion to avoid false positives.
+        
         Args:
             prompt: The AI prompt to send
             status_callback: Async callback(message: str, is_complete: bool, screenshot_path: Optional[Path])
             model: Optional model ID
             mode: One of "agent", "chat"
-            timeout: Max time to wait for completion (seconds)
+            timeout: Max time to wait for completion (seconds) - default 5 mins
             poll_interval: Time between status checks (seconds)
-            stable_threshold: Number of stable polls before considering done
+            stable_threshold: Number of stable polls before considering done (10 = 30s of stability)
+            min_processing_time: Minimum seconds before allowing completion detection
             
         Returns:
             AgentResult with completion status and screenshot path
@@ -1028,15 +1512,18 @@ class CursorAgentBridge:
                     logger.warning(f"Status callback error: {e}")
         
         # Step 1: Send the prompt
+        logger.info(f"[AI_PROMPT] Sending prompt to Cursor: {prompt[:100]}...")
         await report_status("📤 Sending prompt to Cursor...")
         
         result = self.send_prompt(prompt, model=model, mode=mode)
         
         if not result.success:
+            logger.error(f"[AI_PROMPT] Failed to send prompt: {result.message}")
             await report_status(f"❌ Failed: {result.message}", True, None)
             return result
         
         effective_mode = result.data.get("mode", "agent") if result.data else "agent"
+        logger.info(f"[AI_PROMPT] Prompt sent successfully. Mode: {effective_mode}. Waiting for AI to process...")
         await report_status(f"🤖 Cursor AI is processing... ({effective_mode} mode)")
         
         # Update state to PROCESSING
@@ -1045,16 +1532,26 @@ class CursorAgentBridge:
         
         # Step 2: Poll for completion
         start_time = time.time()
-        last_file_count = 0
         stable_count = 0
         last_files = set()
+        last_diff_size = 0         # Track total lines changed (insertions + deletions)
+        last_screenshot_time = 0   # Track when we last sent a screenshot
+        screenshot_count = 0       # Track total screenshots sent
+        sent_initial_screenshot = False  # Track if we sent the first quick screenshot
+        
+        # Screenshot intervals: every 60s for first 10 min, then every 300s (5 min)
+        INITIAL_SCREENSHOT_TIME = 10       # Send first screenshot at 10 seconds
+        SCREENSHOT_INTERVAL_INITIAL = 60   # 1 minute for first 10 min
+        SCREENSHOT_INTERVAL_LATER = 300    # 5 minutes after 10 min
+        INITIAL_PERIOD = 600               # First 10 minutes
         
         while time.time() - start_time < timeout:
             elapsed = int(time.time() - start_time)
             
-            # Check for file changes via git
+            # Check for file changes via git - track CONTENT changes, not just file list
             try:
-                git_result = subprocess.run(
+                # Get file list from git status
+                git_status = subprocess.run(
                     ["git", "status", "--porcelain"],
                     cwd=str(self.workspace),
                     capture_output=True,
@@ -1063,32 +1560,82 @@ class CursorAgentBridge:
                 )
                 
                 current_files = set()
-                if git_result.returncode == 0 and git_result.stdout.strip():
-                    for line in git_result.stdout.strip().split("\n"):
+                if git_status.returncode == 0 and git_status.stdout.strip():
+                    for line in git_status.stdout.strip().split("\n"):
                         if line.strip():
-                            # Parse git status line (e.g., " M file.py" or "?? newfile.py")
                             parts = line.split(maxsplit=1)
                             if len(parts) >= 2:
                                 current_files.add(parts[1].strip())
                 
                 current_count = len(current_files)
                 
-                # Check if files changed since last poll
-                if current_files != last_files:
-                    # New changes detected - AI is actively working
-                    new_files = current_files - last_files
-                    if new_files:
-                        await report_status(f"📝 AI working... {current_count} files changed ({elapsed}s)")
+                # CRITICAL: Also check diff size to detect content changes in existing files
+                # This catches the case where a single file is being written over several minutes
+                git_diff = subprocess.run(
+                    ["git", "diff", "--shortstat"],
+                    cwd=str(self.workspace),
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    encoding='utf-8',
+                    errors='replace'
+                )
+                
+                # Parse diff size (e.g., "1 file changed, 500 insertions(+), 10 deletions(-)")
+                current_diff_size = 0
+                if git_diff.returncode == 0 and git_diff.stdout.strip():
+                    diff_output = git_diff.stdout.strip()
+                    # Extract numbers for insertions and deletions
+                    import re
+                    insertions = re.search(r'(\d+) insertion', diff_output)
+                    deletions = re.search(r'(\d+) deletion', diff_output)
+                    if insertions:
+                        current_diff_size += int(insertions.group(1))
+                    if deletions:
+                        current_diff_size += int(deletions.group(1))
+                
+                # Also check untracked file sizes (for new files not yet staged)
+                for f in current_files:
+                    file_path = self.workspace / f.strip('"')  # Handle quoted paths
+                    if file_path.exists() and file_path.is_file():
+                        try:
+                            current_diff_size += file_path.stat().st_size // 50  # Rough line estimate
+                        except Exception:
+                            pass
+                
+                # Check if CONTENT changed (diff size grew) OR new files appeared
+                content_changed = (current_diff_size != last_diff_size) or (current_files != last_files)
+                
+                if content_changed:
+                    # Content is still changing - AI is actively working
+                    if current_files != last_files:
+                        new_files = current_files - last_files
+                        if new_files:
+                            logger.info(f"[AI_PROMPT] New files: {new_files}")
+                    if current_diff_size != last_diff_size:
+                        logger.info(f"[AI_PROMPT] Diff size changed: {last_diff_size} -> {current_diff_size} lines")
+                    
+                    await report_status(f"📝 AI working... {current_count} files, ~{current_diff_size} lines ({elapsed}s)")
                     last_files = current_files
-                    last_file_count = current_count
+                    last_diff_size = current_diff_size
                     stable_count = 0
                 else:
-                    # No new changes
+                    # No content changes - increment stable count
                     stable_count += 1
+                    if stable_count % 5 == 0:  # Log every 5 stable polls
+                        logger.info(f"[AI_PROMPT] Content stable: {stable_count}/{stable_threshold} polls, {current_diff_size} lines, {elapsed}s")
                 
-                # If we have changes and they're stable for threshold polls, consider done
-                if stable_count >= stable_threshold and current_count > 0:
-                    # AI appears to be done!
+                # Calculate stability time in seconds
+                stability_time = stable_count * poll_interval
+                
+                # If we have changes and CONTENT is stable for threshold polls AND minimum time passed
+                # We need BOTH: enough stable polls AND minimum processing time
+                if (stable_count >= stable_threshold and 
+                    (current_count > 0 or current_diff_size > 0) and 
+                    elapsed >= min_processing_time):
+                    # AI appears to be done! Content hasn't changed for stability_time seconds
+                    logger.info(f"[AI_PROMPT] ✅ AI COMPLETED! Content stable for {stability_time}s")
+                    logger.info(f"[AI_PROMPT]    Files: {current_count}, Lines: ~{current_diff_size}, Elapsed: {elapsed}s")
                     self.session.state = AgentState.CHANGES_PENDING
                     self.session.changes_detected = True
                     self.session.pending_files = list(current_files)
@@ -1115,9 +1662,18 @@ class CursorAgentBridge:
                             "mode": effective_mode
                         }
                     )
+                elif stable_count >= stable_threshold and current_count > 0:
+                    # Files are stable but haven't hit min processing time yet
+                    remaining = int(min_processing_time - elapsed)
+                    if remaining > 0:
+                        await report_status(f"📝 AI working... {current_count} files ({elapsed}s, verifying...)")
                 
-                # If no changes after a while, AI might be waiting or stuck
-                if elapsed > 20 and current_count == 0 and stable_count >= 5:
+                # If no changes after a long while, AI might be waiting or stuck
+                # Only trigger this after 120s with absolutely no file changes
+                # This avoids false "waiting" state when AI is just thinking
+                if elapsed > 120 and current_count == 0 and stable_count >= 30:
+                    logger.info(f"[AI_PROMPT] No file changes after {elapsed}s - AI may be waiting for input")
+                    
                     # Take screenshot to show current state
                     screenshot_path = self.capture_screenshot()
                     
@@ -1125,7 +1681,7 @@ class CursorAgentBridge:
                     self._save_session()
                     
                     await report_status(
-                        f"⏳ Cursor AI may be waiting for input or still thinking... ({elapsed}s)",
+                        f"⏳ Cursor AI may be waiting for input... ({elapsed}s)\nNo file changes detected. Check Cursor directly.",
                         True,
                         screenshot_path
                     )
@@ -1141,15 +1697,71 @@ class CursorAgentBridge:
                             "mode": effective_mode
                         }
                     )
+                
+                # Send initial screenshot at 10 seconds to confirm AI is working
+                if not sent_initial_screenshot and elapsed >= INITIAL_SCREENSHOT_TIME:
+                    sent_initial_screenshot = True
+                    screenshot_count += 1
+                    last_screenshot_time = elapsed
+                    
+                    initial_screenshot = self.capture_screenshot()
+                    files_info = f"{current_count} files changed" if current_count > 0 else "No file changes yet"
+                    
+                    logger.info(f"[AI_PROMPT] Initial screenshot at {elapsed}s - {files_info}")
+                    
+                    await report_status(
+                        f"📸 **AI Started!** ({elapsed}s)\n\n"
+                        f"✅ Cursor received your prompt\n"
+                        f"🔄 AI is now working...\n"
+                        f"📁 {files_info}\n"
+                        f"⏱️ Updates every 1 min",
+                        False,
+                        initial_screenshot
+                    )
+                
+                # Periodic screenshot updates while AI is working
+                # Every 1 minute for first 10 min, then every 5 min after that
+                elif elapsed > INITIAL_SCREENSHOT_TIME:
+                    # Determine current screenshot interval
+                    if elapsed <= INITIAL_PERIOD:
+                        current_interval = SCREENSHOT_INTERVAL_INITIAL
+                    else:
+                        current_interval = SCREENSHOT_INTERVAL_LATER
+                    
+                    # Check if it's time for a screenshot update
+                    time_since_last_screenshot = elapsed - last_screenshot_time
+                    if time_since_last_screenshot >= current_interval:
+                        screenshot_count += 1
+                        last_screenshot_time = elapsed
+                        
+                        # Take screenshot to show current state
+                        progress_screenshot = self.capture_screenshot()
+                        
+                        # Build status message
+                        files_info = f"{current_count} files changed" if current_count > 0 else "No file changes yet"
+                        interval_info = "1 min updates" if elapsed <= INITIAL_PERIOD else "5 min updates"
+                        
+                        logger.info(f"[AI_PROMPT] Progress screenshot #{screenshot_count} at {elapsed}s - {files_info}")
+                        
+                        await report_status(
+                            f"📸 **Progress Update** ({elapsed}s)\n\n"
+                            f"🔄 AI still working...\n"
+                            f"📁 {files_info}\n"
+                            f"⏱️ {interval_info}",
+                            False,  # Not complete yet
+                            progress_screenshot
+                        )
                     
             except subprocess.TimeoutExpired:
+                logger.warning(f"[AI_PROMPT] Git status timed out at {elapsed}s")
                 await report_status(f"⏳ Still processing... ({elapsed}s)")
             except Exception as e:
-                logger.warning(f"Poll error: {e}")
+                logger.warning(f"[AI_PROMPT] Poll error at {elapsed}s: {e}")
             
             await asyncio.sleep(poll_interval)
         
         # Timeout reached
+        logger.info(f"[AI_PROMPT] Timeout after {int(timeout)}s. Files changed: {len(last_files)}")
         self.session.state = AgentState.IDLE
         self._save_session()
         
@@ -1157,7 +1769,7 @@ class CursorAgentBridge:
         screenshot_path = self.capture_screenshot()
         
         await report_status(
-            f"⏱️ Timeout after {int(timeout)}s - AI may still be working",
+            f"⏱️ Timeout after {int(timeout)}s - AI may still be working. Check Cursor directly.",
             True,
             screenshot_path
         )
@@ -1460,10 +2072,11 @@ class CursorAgentBridge:
             
             time.sleep(0.3)
             
-            # Cursor uses Ctrl+Enter to accept changes in diff view
+            # Cursor uses Ctrl+Enter (Cmd+Enter on macOS) to accept changes in diff view
             # This accepts all proposed changes from the AI
-            logger.info("Sending Accept shortcut (Ctrl+Enter)...")
-            pyautogui.hotkey('ctrl', 'enter')
+            shortcut_display = f"{MODIFIER_KEY.title()}+Enter"
+            logger.info(f"Sending Accept shortcut ({shortcut_display})...")
+            pyautogui.hotkey(MODIFIER_KEY, 'enter')
             time.sleep(0.5)
             
             # Update session
@@ -1473,7 +2086,7 @@ class CursorAgentBridge:
             self.session.files_at_prompt_start = []  # Reset for next prompt
             self._save_session()
             
-            self._add_to_history(self.session.current_prompt, "accept", "accepted via Cursor Ctrl+Enter")
+            self._add_to_history(self.session.current_prompt, "accept", f"accepted via Cursor {shortcut_display}")
             
             return AgentResult(
                 success=True,
@@ -1613,8 +2226,10 @@ class CursorAgentBridge:
         """
         Reject/Undo changes using Cursor's UI automation.
         
-        Uses Ctrl+Backspace to reject AI-generated changes in Cursor's diff view.
-        For chat mode, Escape is used to dismiss the proposed changes.
+        For agent mode: Uses Ctrl+Z (Cmd+Z on macOS) to undo changes since
+        agent mode auto-saves files.
+        
+        For chat mode: Uses Escape to dismiss proposed changes.
         
         Returns:
             AgentResult with success status
@@ -1627,33 +2242,46 @@ class CursorAgentBridge:
             )
         
         try:
-            # Focus Cursor window
-            logger.info("Focusing Cursor for Reject...")
+            # Focus Cursor window first
+            logger.info("[REJECT] Focusing Cursor window...")
             if not WindowManager.focus_cursor_window():
+                logger.error("[REJECT] Could not focus Cursor window")
                 return AgentResult(
                     success=False,
                     message="Could not focus Cursor",
                     error="Cursor window not found"
                 )
             
-            time.sleep(0.3)
+            # Wait for focus to take effect
+            time.sleep(0.5)
+            logger.info("[REJECT] Cursor window focused")
             
             current_mode = self.session.prompt_mode or "agent"
+            logger.info(f"[REJECT] Current mode: {current_mode}")
             
             if current_mode == "chat":
                 # Chat mode: Press Escape to dismiss/reject proposed changes
-                logger.info("Rejecting proposed changes (Escape)...")
+                logger.info("[REJECT] Chat mode - pressing Escape twice...")
                 pyautogui.press('escape')
-                time.sleep(0.2)
+                time.sleep(0.3)
                 pyautogui.press('escape')  # Press twice to be sure
+                time.sleep(0.2)
                 shortcut_used = "Escape"
             else:
-                # Agent mode: Use Ctrl+Backspace to reject changes
-                # This rejects all proposed changes in the diff view
-                logger.info("Rejecting changes with Ctrl+Backspace...")
-                pyautogui.hotkey('ctrl', 'backspace')
-                time.sleep(0.3)
-                shortcut_used = "Ctrl+Backspace"
+                # Agent mode: Files are auto-saved, so we need to UNDO
+                # Use Ctrl+Z (Cmd+Z on macOS) multiple times to undo changes
+                shortcut_display = f"{MODIFIER_KEY.title()}+Z"
+                logger.info(f"[REJECT] Agent mode - pressing {shortcut_display} multiple times to undo...")
+                
+                # Press Ctrl+Z / Cmd+Z multiple times (3 times to undo several changes)
+                for i in range(3):
+                    logger.info(f"[REJECT] Undo #{i+1}...")
+                    pyautogui.hotkey(MODIFIER_KEY, 'z')
+                    time.sleep(0.3)
+                
+                shortcut_used = f"{shortcut_display} (x3)"
+            
+            logger.info(f"[REJECT] Completed: {shortcut_used}")
             
             # Update session
             self.session.state = AgentState.IDLE
@@ -1673,7 +2301,7 @@ class CursorAgentBridge:
             )
             
         except Exception as e:
-            logger.error(f"Failed to Reject: {e}")
+            logger.error(f"[REJECT] Failed: {e}")
             return AgentResult(
                 success=False,
                 message="Failed to Reject",
@@ -1735,6 +2363,64 @@ class CursorAgentBridge:
                 error=str(e)
             )
     
+    def stop_generation(self) -> AgentResult:
+        """
+        Stop the current AI generation in Cursor.
+        
+        Uses Ctrl+Shift+Backspace (Cmd+Shift+Backspace on macOS) to stop
+        the AI while it's generating/working.
+        
+        Returns:
+            AgentResult with success status
+        """
+        if not AUTOMATION_AVAILABLE:
+            return AgentResult(
+                success=False,
+                message="Automation not available",
+                error="Install pyautogui and pyperclip"
+            )
+        
+        try:
+            # Focus Cursor window
+            logger.info("[STOP] Focusing Cursor window...")
+            if not WindowManager.focus_cursor_window():
+                return AgentResult(
+                    success=False,
+                    message="Could not focus Cursor",
+                    error="Cursor window not found"
+                )
+            
+            time.sleep(0.5)
+            
+            # Press Ctrl+Shift+Backspace to stop generation
+            shortcut_display = f"{MODIFIER_KEY.title()}+Shift+Backspace"
+            logger.info(f"[STOP] Pressing {shortcut_display} to stop generation...")
+            pyautogui.hotkey(MODIFIER_KEY, 'shift', 'backspace')
+            time.sleep(0.3)
+            
+            # Update session state
+            self.session.state = AgentState.IDLE
+            self._save_session()
+            
+            self._add_to_history("stop", "stop_generation", f"stopped via {shortcut_display}")
+            
+            return AgentResult(
+                success=True,
+                message=f"🛑 Generation stopped! ({shortcut_display})",
+                data={
+                    "action": "stop",
+                    "method": shortcut_display
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"[STOP] Failed: {e}")
+            return AgentResult(
+                success=False,
+                message="Failed to stop generation",
+                error=str(e)
+            )
+    
     def cancel_action(self) -> AgentResult:
         """
         Cancel a pending action in Cursor (run command, web search, etc).
@@ -1754,7 +2440,7 @@ class CursorAgentBridge:
         
         try:
             # Focus Cursor window
-            logger.info("Focusing Cursor to cancel action...")
+            logger.info("[CANCEL] Focusing Cursor window...")
             if not WindowManager.focus_cursor_window():
                 return AgentResult(
                     success=False,
@@ -1762,10 +2448,10 @@ class CursorAgentBridge:
                     error="Cursor window not found"
                 )
             
-            time.sleep(0.3)
+            time.sleep(0.5)
             
             # Press Escape to cancel the pending action
-            logger.info("Cancelling action (Escape)...")
+            logger.info("[CANCEL] Pressing Escape to cancel action...")
             pyautogui.press('escape')
             time.sleep(0.2)
             
@@ -1843,10 +2529,10 @@ class CursorAgentBridge:
     
     def send_continue(self) -> AgentResult:
         """
-        Send a continue signal to Cursor's AI agent.
+        Press the Continue button in Cursor's AI agent.
         
-        When the AI pauses or needs a nudge to continue, this sends
-        a simple "continue" message to keep it going.
+        When the AI is waiting for approval or showing a Continue button,
+        this presses Enter to activate it.
         
         Returns:
             AgentResult with success status
@@ -1860,7 +2546,7 @@ class CursorAgentBridge:
         
         try:
             # Focus Cursor window
-            logger.info("Focusing Cursor to send continue...")
+            logger.info("[CONTINUE] Focusing Cursor window...")
             if not WindowManager.focus_cursor_window():
                 return AgentResult(
                     success=False,
@@ -1868,24 +2554,21 @@ class CursorAgentBridge:
                     error="Cursor window not found"
                 )
             
+            time.sleep(0.5)
+            
+            # Press Enter to click the Continue button
+            logger.info("[CONTINUE] Pressing Enter to activate Continue button...")
+            pyautogui.press('enter')
             time.sleep(0.3)
             
-            # Type "continue" and press Enter
-            logger.info("Sending continue message...")
-            pyperclip.copy("continue")
-            pyautogui.hotkey('ctrl', 'v')
-            time.sleep(0.1)
-            pyautogui.press('enter')
-            time.sleep(0.2)
-            
-            self._add_to_history("continue", "continue_signal", "sent continue to agent")
+            self._add_to_history("continue", "continue_button", "pressed Enter for Continue")
             
             return AgentResult(
                 success=True,
-                message="▶️ Continue sent to AI!",
+                message="➡️ Continue button pressed!",
                 data={
                     "action": "continue",
-                    "method": "text_input"
+                    "method": "enter_key"
                 }
             )
             
@@ -2123,3 +2806,194 @@ class CursorAgentBridge:
 def get_agent_for_workspace(workspace: Path) -> CursorAgentBridge:
     """Factory function to get an agent bridge for a workspace."""
     return CursorAgentBridge(workspace)
+
+
+# ============================================
+# Virtual Display Support (Linux Headless Mode)
+# ============================================
+
+class VirtualDisplayManager:
+    """
+    Manages virtual display for headless GUI automation on Linux.
+    
+    Uses pyvirtualdisplay (Xvfb wrapper) to create a virtual X server
+    that allows pyautogui to work even when no physical display is attached.
+    
+    Similar to Windows TSCON - keeps GUI applications running without
+    a physical monitor.
+    """
+    
+    _instance = None
+    _display = None
+    _is_running = False
+    
+    @classmethod
+    def get_instance(cls) -> 'VirtualDisplayManager':
+        """Get the singleton instance."""
+        if cls._instance is None:
+            cls._instance = VirtualDisplayManager()
+        return cls._instance
+    
+    @staticmethod
+    def is_available() -> bool:
+        """Check if virtual display is available."""
+        return VIRTUAL_DISPLAY_AVAILABLE and IS_LINUX
+    
+    @classmethod
+    def start(cls, width: int = 1920, height: int = 1080, color_depth: int = 24) -> bool:
+        """
+        Start a virtual display.
+        
+        Args:
+            width: Display width in pixels
+            height: Display height in pixels
+            color_depth: Color depth (16, 24, or 32)
+            
+        Returns:
+            True if started successfully
+        """
+        if not cls.is_available():
+            logger.warning("Virtual display not available (Linux + pyvirtualdisplay required)")
+            return False
+        
+        if cls._is_running:
+            logger.info("Virtual display already running")
+            return True
+        
+        try:
+            from pyvirtualdisplay import Display
+            
+            cls._display = Display(
+                visible=False,
+                size=(width, height),
+                color_depth=color_depth
+            )
+            cls._display.start()
+            cls._is_running = True
+            
+            logger.info(f"Virtual display started: {width}x{height}x{color_depth}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to start virtual display: {e}")
+            return False
+    
+    @classmethod
+    def stop(cls) -> bool:
+        """
+        Stop the virtual display.
+        
+        Returns:
+            True if stopped successfully
+        """
+        if not cls._is_running or cls._display is None:
+            return True
+        
+        try:
+            cls._display.stop()
+            cls._display = None
+            cls._is_running = False
+            logger.info("Virtual display stopped")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to stop virtual display: {e}")
+            return False
+    
+    @classmethod
+    def is_running(cls) -> bool:
+        """Check if virtual display is currently running."""
+        return cls._is_running
+    
+    @classmethod
+    def get_display_info(cls) -> Optional[Dict[str, Any]]:
+        """
+        Get information about the virtual display.
+        
+        Returns:
+            Dictionary with display info or None if not running
+        """
+        if not cls._is_running or cls._display is None:
+            return None
+        
+        try:
+            return {
+                "running": True,
+                "display": cls._display.display,
+                "size": cls._display.size,
+                "backend": "Xvfb",
+                "platform": "Linux"
+            }
+        except Exception:
+            return {"running": True, "platform": "Linux"}
+
+
+def start_virtual_display() -> bool:
+    """
+    Start virtual display for headless operation.
+    
+    This is the Linux equivalent of Windows TSCON - allows GUI automation
+    to work without a physical monitor.
+    
+    Returns:
+        True if started successfully (or already running/not needed)
+    """
+    if IS_WINDOWS:
+        # Windows uses TSCON, not virtual display
+        logger.info("Windows detected - use TSCON for headless operation")
+        return True
+    
+    if IS_MACOS:
+        # macOS has limited headless support, virtual display not available
+        logger.warning("macOS detected - virtual display not supported")
+        logger.warning("Consider using a virtual display adapter or VNC")
+        return False
+    
+    if IS_LINUX:
+        return VirtualDisplayManager.start()
+    
+    return False
+
+
+def stop_virtual_display() -> bool:
+    """Stop the virtual display if running."""
+    return VirtualDisplayManager.stop()
+
+
+def get_platform_info() -> Dict[str, Any]:
+    """
+    Get information about the current platform and its capabilities.
+    
+    Returns:
+        Dictionary with platform information
+    """
+    info = {
+        "platform": platform.system(),
+        "platform_release": platform.release(),
+        "python_version": platform.python_version(),
+        "automation_available": AUTOMATION_AVAILABLE,
+        "modifier_key": MODIFIER_KEY,
+    }
+    
+    if IS_WINDOWS:
+        info.update({
+            "headless_method": "TSCON",
+            "windows_api_available": WINDOWS_API_AVAILABLE,
+            "headless_available": True,
+        })
+    elif IS_MACOS:
+        info.update({
+            "headless_method": "Virtual Display Adapter / VNC",
+            "headless_available": False,
+            "note": "macOS requires hardware/software display adapter for true headless",
+        })
+    elif IS_LINUX:
+        info.update({
+            "headless_method": "Xvfb (pyvirtualdisplay)",
+            "virtual_display_available": VIRTUAL_DISPLAY_AVAILABLE,
+            "xdotool_available": XDOTOOL_AVAILABLE,
+            "wmctrl_available": WMCTRL_AVAILABLE,
+            "headless_available": VIRTUAL_DISPLAY_AVAILABLE,
+        })
+    
+    return info

@@ -10,6 +10,349 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.11] - 2026-02-01
+
+### 📸 OCR Text Extraction from Cursor Screenshots
+
+TeleCode now uses OCR to extract the AI's text output from Cursor screenshots! When you click "📊 Check", you get both the screenshot AND the actual text summary - filtere to show only the explanation text (no code blocks).
+
+### Added
+
+#### OCR Text Extraction
+- **Screenshot → Text**: Extracts readable text from Cursor screenshots using Tesseract OCR
+- **Smart Filtering**: Automatically removes code blocks, file paths, diff markers, and technical syntax
+- **Natural Language Only**: Keeps only the AI's explanations, summaries, and bullet points
+- **Full Scrollability**: Long outputs sent as `.txt` document files that you can scroll through in Telegram
+
+#### New `CursorAgentBridge` Methods
+```python
+agent.extract_text_from_screenshot(path, filter_code_blocks=True)  # OCR extraction
+agent.capture_and_extract_text()  # Screenshot + OCR in one call
+```
+
+#### Smart Text Filtering
+The OCR filter removes:
+- Code blocks (indented code, syntax highlighted)
+- File paths (`src/file.py`, `C:\path\to\file`)
+- Diff markers (`+++`, `---`, `@@`, `+`, `-`)
+- Line numbers (`1:`, `12:`, etc.)
+- Import/export statements
+- Function/class definitions
+- HTML/XML tags
+- UI elements and menu items
+
+And keeps:
+- Natural language explanations
+- Bullet points and numbered lists
+- Summary paragraphs
+- Status messages
+
+### Changed
+
+#### "📊 Check" Button Enhanced
+1. Shows git diff summary (file changes)
+2. Captures screenshot of Cursor
+3. Extracts text via OCR
+4. Sends both screenshot AND extracted text separately
+5. Long text (>3800 chars) sent as downloadable `.txt` file
+
+### New Dependencies
+- `pytesseract>=0.3.10` - Python wrapper for Tesseract OCR
+
+### Setup Requirements
+Tesseract OCR engine must be installed:
+- **Windows**: Download from https://github.com/UB-Mannheim/tesseract/wiki
+- **macOS**: `brew install tesseract`
+- **Linux**: `sudo apt install tesseract-ocr`
+
+---
+
+## [0.1.10] - 2026-02-01
+
+### 📸 Progress Screenshots While AI is Working
+
+Added periodic screenshot updates so you can see what Cursor is doing while AI processes your prompt.
+
+### Added
+
+#### Initial Screenshot at 10 Seconds
+- **Quick confirmation** that Cursor received and started processing your prompt
+- Shows "AI Started!" with initial screenshot at 10 seconds
+- Tells user updates will come every 1 minute
+
+#### Progress Screenshot Updates
+- **Every 1 minute** for the first 10 minutes of processing
+- **Every 5 minutes** after 10 minutes until completion
+- Screenshots sent as photo messages showing current Cursor state
+- Includes file change count and elapsed time
+
+#### Control Buttons on Progress Screenshots
+Each progress screenshot now includes action buttons:
+- **➡️ Continue** - Press the Continue button in Cursor (presses Enter)
+- **🛑 Stop** - Stop the current generation (Ctrl+Shift+Backspace)
+
+This allows users to:
+- Approve Continue prompts when AI asks to proceed
+- Stop long-running generations remotely
+- Control AI workflow without switching to laptop
+
+#### New `stop_generation()` Method
+- Uses correct Cursor shortcut: **Ctrl+Shift+Backspace** (Cmd+Shift+Backspace on macOS)
+- Separate from `cancel_action()` which uses Escape for dialogs
+- Properly stops AI while it's actively generating
+
+#### Fixed `send_continue()` Method
+- **Old (wrong)**: Was typing "continue" as text
+- **New (correct)**: Just presses Enter to activate the Continue button
+
+#### Fixed AI Completion Detection - Now Tracks Content Changes
+- **Old (wrong)**: Only checked if file LIST changed - missed content growing in same file
+- **New (correct)**: Tracks `git diff --shortstat` to detect content changes
+- Now monitors **total lines changed** (insertions + deletions)
+- Single file being written over several minutes will NOT trigger false "completed"
+- Logs now show: `[AI_PROMPT] Diff size changed: 500 -> 750 lines`
+- Only declares complete when CONTENT stops changing for stable_threshold polls
+
+### Fixed
+
+#### Reject Button Now Uses Correct Undo Shortcut
+- **Issue**: Reject button was using `Ctrl+Backspace` which doesn't undo in Cursor
+- **Fix**: Now uses `Ctrl+Z` (or `Cmd+Z` on macOS) pressed 3 times to undo changes
+- Added detailed `[REJECT]` logging for debugging
+- Increased focus wait time to 0.5s for reliability
+- Chat mode still uses Escape to dismiss proposals
+
+#### How It Works
+```
+1 min:  📸 Progress Update (0 files)
+2 min:  📸 Progress Update (2 files changed)
+3 min:  📸 Progress Update (3 files changed)
+...
+10 min: 📸 Progress Update (5 files changed)
+15 min: 📸 Progress Update (5 files changed)  ← 5 min interval now
+20 min: 📸 Progress Update (6 files changed)
+...
+✅ Cursor AI completed! (6 files changed in 22min)
+```
+
+---
+
+### 🤖 Fixed AI Prompt Completion Detection - Triggering Too Early
+
+Fixed major issue where "Cursor AI Completed" message was sent prematurely while AI was still working.
+
+### Fixed
+
+#### AI Completion Detection Logic Overhaul
+- **Issue**: AI was declared "completed" after only 6 seconds of stable file changes (3 polls × 2s)
+- **Root cause**: `stable_threshold=3` and `poll_interval=2.0` was way too aggressive
+- **Impact**: User would see "Completed" while Cursor was still actively processing
+
+#### New Detection Parameters
+| Parameter | Old Value | New Value | Effect |
+|-----------|-----------|-----------|--------|
+| `timeout` | 90s | 300s (5 min) | More time for complex prompts |
+| `poll_interval` | 2s | 3s | Less aggressive polling |
+| `stable_threshold` | 3 polls | 10 polls | Need 30s of stability, not 6s |
+| `min_processing_time` | ❌ None | 15s | Won't complete before 15s elapsed |
+
+#### Improved "Waiting" State Detection
+- Old: Triggered after 20s with no changes
+- New: Triggers after 120s with no changes (gives AI much more time)
+- Added periodic status updates every 30 seconds while working
+
+#### Better Logging
+- Added `[AI_PROMPT]` prefixed logs throughout the flow:
+  - When prompt is sent to Cursor
+  - When new files are detected
+  - Stability progress (every 5 polls)
+  - When completion is declared
+  - Timeout and error conditions
+
+### Technical Details
+```python
+# Old (too aggressive):
+stable_threshold=3, poll_interval=2.0  # 6 seconds = "done"
+
+# New (proper detection):
+stable_threshold=10, poll_interval=3.0, min_processing_time=15.0
+# Requires: 30s of file stability AND at least 15s elapsed
+```
+
+---
+
+### 🐛 Fixed Commands - Markdown Parse Error (400 Bad Request)
+
+Fixed `/pwd`, `/info`, and `/cd` commands failing with 400 Bad Request error.
+
+### Fixed
+
+#### Markdown Parsing Issues in Multiple Commands
+- **Issue**: Commands failed when git status contained `## main` (Telegram interpreted it as Markdown header)
+- **Affected**: `/pwd`, `/info`, `/cd` - all commands using `get_current_info()` with Markdown parse mode
+- **Fix**: 
+  - `/pwd`: Removed `parse_mode="Markdown"` (no formatting needed)
+  - `/info`: Wrapped workspace info in code block
+  - `/cd`: Wrapped workspace info in code block
+- This also fixes paths with underscores (like `my_project`) being incorrectly parsed as italic
+
+---
+
+### 📚 Documentation Audit & Update
+
+Comprehensive documentation audit to ensure all public-facing docs are up to date with latest features and commands.
+
+### Documentation Updates
+
+#### All Docs
+- Updated version references from v0.1.8/v0.1.9 to v0.1.10
+- Added missing `/create` command (project creation wizard)
+- Added missing `/cursor` command (IDE status and launch)
+
+#### README.md
+- Updated all download links to v0.1.10
+- Added new "Project & IDE" commands section
+- Fixed version badge and references
+
+#### QUICK_START.md  
+- Added `/create` and `/cursor open` to command reference
+
+#### USER_GUIDE.md
+- Added `/model`, `/models` to Quick Reference Card
+- Added `/log`, `/branch`, `/pwd` to Quick Reference Card
+- Now lists all 20+ available commands
+
+#### CONTRIBUTING.md
+- Updated project structure with all new source files
+- Added: `cursor_agent.py`, `model_config.py`, `prompt_guard.py`, `token_vault.py`, `tray_icon.py`, `tscon_helper.py`
+- Added docs folder files: `COMMANDS.md`, `SECURITY_AUDIT.md`
+- Updated current version to v0.1.10
+
+#### docs/COMMANDS.md
+- Updated version footer to v0.1.10
+
+---
+
+### 🐛 Fixed System Tray Settings - Instance Lock Issue
+
+Fixed a bug where clicking "Settings" from the system tray would show "TeleCode is already running!" instead of opening the config GUI.
+
+### Fixed
+
+#### System Tray Settings Now Works!
+- **Fixed: Settings menu from tray** - Was trying to launch a new instance with `--config`, which triggered the single-instance lock check and failed
+- **New `--settings-only` flag** - Opens config GUI without instance lock or starting the bot afterward
+- **Proper stop flag handling** - Bot now properly checks `_stop_requested` flag and exits gracefully
+- **Better settings message** - Shows "Settings Updated" message when editing from tray (not "TeleCode is Starting")
+
+### Changed
+
+#### New Startup Flag
+- `--settings-only` / `-s` - Opens settings GUI only, for use from system tray
+  - No instance lock check (safe when bot is already running)
+  - No bot start after saving (bot is already running)
+  - Proper message: "Some changes may require restart"
+
+#### Improved Shutdown Flow
+- Main loop now checks `_stop_requested` every second (was 1 hour!)
+- "Stop TeleCode" from tray now actually stops the bot promptly
+- Lock file properly released on all exit paths
+
+#### Windows Improvements
+- Settings GUI now launches with `pythonw.exe` when available (no console flash)
+- Uses `CREATE_NO_WINDOW` flag to prevent console window
+
+### Technical Details
+- `main.py`: Added `--settings-only` argument that bypasses instance lock
+- `bot.py`: Updated `_on_tray_settings` to use `--settings-only` instead of `--config`
+- `bot.py`: Changed main loop from 3600s sleep to 1s with stop flag check
+- `config_gui.py`: Different message for settings-only mode vs first-time setup
+
+---
+
+## [0.1.9] - 2026-02-01
+
+### 🌍 Full Cross-Platform Support (Windows, macOS, Linux)
+
+TeleCode now works on **all major platforms** with platform-specific optimizations for headless GUI automation!
+
+### Added
+
+#### Cross-Platform Window Management
+- **Windows**: Win32 API (unchanged, works with TSCON)
+- **macOS**: AppleScript integration for Cursor window focus/detection
+- **Linux**: xdotool/wmctrl support for window management
+
+#### Cross-Platform Credential Storage
+- **Windows**: DPAPI (unchanged)
+- **macOS**: Keychain via `security` command
+- **Linux**: Secret Service (GNOME Keyring / KWallet) via `keyring` library
+- **Fallback**: Encrypted file with machine-specific key (all platforms)
+
+#### Linux Virtual Display Support (Headless Mode)
+- **Xvfb integration** via `pyvirtualdisplay` for headless GUI automation
+- Linux equivalent of Windows TSCON - run Cursor without a physical monitor
+- System tray toggle to start/stop virtual display
+- Automatic detection of Xvfb and pyvirtualdisplay availability
+- Configuration GUI shows setup instructions if dependencies missing
+
+#### Platform-Aware Keyboard Shortcuts
+- Automatic detection: `Cmd` on macOS, `Ctrl` on Windows/Linux
+- All keyboard automation now uses platform-appropriate modifiers
+- Works correctly for: prompt sending, accept, reject, continue
+
+#### Updated System Tray Menus
+- **Windows**: TSCON Quick Lock & Secure Lock options
+- **Linux**: Virtual Display toggle option
+- **macOS**: Standard menu (caffeinate runs automatically)
+
+#### New Dependencies
+- `keyring>=24.0.0` - Cross-platform credential storage
+- `pyvirtualdisplay>=3.0` - Linux virtual display (Xvfb wrapper)
+
+### Changed
+
+#### Configuration GUI
+- Platform-specific sections:
+  - Windows: TSCON Session Lock options
+  - Linux: Virtual Display setup and status
+  - macOS: Headless mode info (caffeinate, virtual display adapters)
+
+#### System Status (`/status`)
+- Now shows headless mode availability and status
+- Platform-specific information displayed
+
+### Platform Support Matrix
+
+| Feature | Windows | macOS | Linux |
+|---------|---------|-------|-------|
+| Sleep Prevention | ✅ SetThreadExecutionState | ✅ caffeinate | ✅ systemd-inhibit |
+| Lock Detection | ✅ User32 API | ✅ Quartz | ✅ DE-specific |
+| Window Focus | ✅ Win32 API | ✅ AppleScript | ✅ xdotool/wmctrl |
+| Headless GUI | ✅ TSCON | ⚠️ VNC/Adapter | ✅ Xvfb |
+| Credential Storage | ✅ DPAPI | ✅ Keychain | ✅ Secret Service |
+
+### Linux Setup
+
+```bash
+# Install Xvfb for headless mode
+sudo apt install xvfb
+
+# Install Python dependencies
+pip install pyvirtualdisplay keyring
+
+# Optional: Install xdotool for window management
+sudo apt install xdotool
+```
+
+### macOS Notes
+
+- Headless GUI automation requires external setup (VNC or virtual display adapter)
+- `caffeinate` prevents sleep automatically (TeleCode handles this)
+- For true headless: use BetterDummy, Deskreen, or hardware HDMI adapter
+
+---
+
 ## [0.1.8] - 2026-02-01
 
 ### 🔔 Cleaner Button Layout - Separate Approval Message
@@ -119,7 +462,7 @@ Fixed AI accept/reject to use correct Cursor keyboard shortcuts and renamed `/ac
 
 #### Cursor Keyboard Shortcuts Now Working!
 - **Accept** now uses **Ctrl+Enter** (was incorrectly using Ctrl+Shift+Enter)
-- **Reject** now uses **Ctrl+Backspace** for Agent mode (was incorrectly using Ctrl+Z)
+- **Reject** now uses **Ctrl+Z** (undo) for Agent mode
 - **Reject** uses **Escape** for Chat mode (unchanged)
 
 ### Changed
@@ -130,18 +473,18 @@ Fixed AI accept/reject to use correct Cursor keyboard shortcuts and renamed `/ac
 
 #### Button Labels
 - **✅ Accept** - Accept AI changes in Cursor (Ctrl+Enter)
-- **❌ Reject** - Reject AI changes in Cursor (Ctrl+Backspace)
+- **❌ Reject** - Reject AI changes in Cursor (Ctrl+Z / Escape)
 
 #### New Commands
 - `/ai accept` - Accept AI changes via Ctrl+Enter
-- `/ai reject` - Reject AI changes via Ctrl+Backspace
+- `/ai reject` - Reject AI changes via Ctrl+Z (agent) or Escape (chat)
 
 ### Migration
 | Old Command | New Command | Action |
 |-------------|-------------|--------|
 | `/accept` | `/commit` | Git commit |
 | `/ai accept` | `/ai accept` | Accept in Cursor (Ctrl+Enter) |
-| `/ai revert` | `/ai reject` | Reject in Cursor (Ctrl+Backspace) |
+| `/ai revert` | `/ai reject` | Reject in Cursor (Ctrl+Z / Escape) |
 
 ---
 
@@ -162,16 +505,17 @@ When Cursor's AI wants to run a terminal command or search the web, you now get 
   - Lets AI search for context without automatic execution
 - **🚫 Cancel** - Cancel any pending AI action
   - Presses Escape in Cursor to cancel the pending action
-- **➡️ Continue** - Send "continue" to keep AI working
-  - Useful when AI pauses or needs a nudge to continue
-  - Types "continue" and presses Enter in Cursor
+- **➡️ Continue** - Press the Continue button when AI pauses
+  - Useful when AI pauses or asks to continue
+  - Presses Enter in Cursor to activate Continue button
 
 #### New `CursorAgentBridge` Methods
 ```python
 agent.approve_run()        # Approve terminal command (Enter key)
 agent.cancel_action()      # Cancel pending action (Escape key)
 agent.approve_web_search() # Approve web search (Enter key)
-agent.send_continue()      # Send "continue" to AI (text + Enter)
+agent.send_continue()      # Press Continue button (Enter key)
+agent.stop_generation()    # Stop generation (Ctrl+Shift+Backspace)
 ```
 
 ### Changed
@@ -472,7 +816,7 @@ Prompts are now SENT DIRECTLY to Cursor Composer - no manual paste needed!
 |---------|-------------|
 | `/ai <prompt>` | **Sends prompt directly to Cursor Composer** |
 | `/ai accept` | Accept AI changes in Cursor (Ctrl+Enter) |
-| `/ai reject` | Reject AI changes in Cursor (Ctrl+Backspace) |
+| `/ai reject` | Reject AI changes in Cursor (Ctrl+Z / Escape) |
 | `/ai continue <prompt>` | Send follow-up prompt |
 | `/ai stop` | Clear current AI session |
 | `/ai status` | Check agent state and pending changes |
@@ -896,7 +1240,7 @@ This is a complete rewrite focused on **lock-proof operation**. TeleCode now wor
 
 ### [0.2.0] - Planned
 
-- [ ] OCR: Screenshot Cursor output and extract text
+- [x] ~~OCR: Screenshot Cursor output and extract text~~ ✅ Done in v0.1.11
 - [ ] Multi-Repo: Switch between sandbox roots via commands
 
 ### [0.3.0] - Planned

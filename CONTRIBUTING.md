@@ -156,19 +156,27 @@ mypy src/
 ```
 telecode/
 ├── src/
-│   ├── __init__.py       # Package info
-│   ├── bot.py            # Main Telegram bot
-│   ├── security.py       # Security layer
-│   ├── cli_wrapper.py    # Git/Cursor CLI
-│   ├── config_gui.py     # Setup GUI
-│   ├── system_utils.py   # OS utilities
+│   ├── __init__.py        # Package info
+│   ├── bot.py             # Main Telegram bot
+│   ├── security.py        # Security layer
+│   ├── cli_wrapper.py     # Git/Cursor CLI
+│   ├── config_gui.py      # Setup GUI
+│   ├── cursor_agent.py    # Cursor automation bridge
+│   ├── model_config.py    # AI model configuration
+│   ├── prompt_guard.py    # Prompt injection defense
+│   ├── system_utils.py    # OS utilities
+│   ├── token_vault.py     # Encrypted token storage
+│   ├── tray_icon.py       # System tray icon
+│   ├── tscon_helper.py    # Windows TSCON lock
 │   └── voice_processor.py # Voice transcription
 ├── docs/
-│   ├── SECURITY.md
-│   ├── USER_GUIDE.md
-│   └── TSCON.md
-├── tests/                # Test files
-├── main.py              # Entry point
+│   ├── COMMANDS.md        # Command reference
+│   ├── SECURITY.md        # Security overview
+│   ├── SECURITY_AUDIT.md  # Full security audit
+│   └── TSCON.md           # Windows headless mode
+├── build/                 # Build scripts for all platforms
+├── tests/                 # Test files
+├── main.py                # Entry point
 ├── requirements.txt
 ├── setup.bat / setup.sh
 └── README.md
@@ -209,7 +217,7 @@ TeleCode follows [Semantic Versioning](https://semver.org/):
 | Bug fixes, minor improvements | Patch | v0.1.0 → v0.1.1 |
 | New features | Minor | v0.1.x → v0.2.0 |
 
-Current version: **v0.1.0** (Initial Release)
+Current version: **v0.1.10**
 
 ---
 

@@ -79,13 +79,21 @@ echo   - TeleCode: Running
 echo ================================================
 echo.
 
-tscon %sessionname% /dest:console
+REM Use full path to tscon.exe (required when PATH may not include System32)
+%SystemRoot%\System32\tscon.exe %sessionname% /dest:console
 
 if errorlevel 1 (
     echo.
     echo ================================================
     echo   ERROR: TSCON FAILED
     echo ================================================
+    echo.
+    echo Possible causes:
+    echo   - Session name not found (try: query session)
+    echo   - Running in Remote Desktop (TSCON won't work over RDP)
+    echo   - Windows Home edition (TSCON limited)
+    echo.
+    echo Current session: %sessionname%
     echo.
     echo Restoring Remote Desktop...
     reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f > nul 2>&1

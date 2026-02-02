@@ -105,6 +105,8 @@ Hello world     → AI prompt!
 | List models | `/models` |
 | List files | `/ls` |
 | Change folder | `/cd myproject` |
+| **New project** | `/create` |
+| **Open Cursor** | `/cursor open` |
 
 > **Note:** `/revert` requires `CONFIRM` argument to prevent accidents.
 

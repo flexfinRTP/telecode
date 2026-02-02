@@ -30,6 +30,28 @@ pillow>=10.0.0
 pyautogui>=0.9.54
 pyperclip>=1.8.2
 
+# OCR Text Extraction from Screenshots
+# Requires Tesseract OCR engine installed:
+#   Windows: https://github.com/UB-Mannheim/tesseract/wiki
+#   macOS: brew install tesseract
+#   Linux: sudo apt install tesseract-ocr
+pytesseract>=0.3.10
+
+# ============================================
+# Cross-Platform Support
+# ============================================
+
+# Cross-platform credential storage (Linux Secret Service / macOS Keychain)
+keyring>=24.0.0
+
+# ============================================
+# Linux-Specific (Optional - for headless mode)
+# ============================================
+
+# Virtual display for headless GUI automation (Linux only)
+# Requires Xvfb installed: sudo apt install xvfb
+pyvirtualdisplay>=3.0; sys_platform == "linux"
+
 # ============================================
 # Build Dependencies (optional, for packaging)
 # ============================================
