@@ -118,7 +118,9 @@ class CLIWrapper:
                 text=True,
                 timeout=timeout,
                 shell=shell,
-                env=safe_env
+                env=safe_env,
+                encoding='utf-8',
+                errors='replace'  # Handle encoding errors gracefully
             )
             
             # Truncate output if too large

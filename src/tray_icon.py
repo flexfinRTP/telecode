@@ -233,6 +233,8 @@ def get_tray() -> Optional[TrayIcon]:
 
 def start_tray(
     on_settings: Optional[Callable] = None,
+    on_quick_lock: Optional[Callable] = None,
+    on_secure_lock: Optional[Callable] = None,
     on_stop: Optional[Callable] = None,
 ) -> Optional[TrayIcon]:
     """
@@ -240,6 +242,8 @@ def start_tray(
     
     Args:
         on_settings: Callback when Settings is clicked
+        on_quick_lock: Callback when Quick Lock is clicked (Windows only)
+        on_secure_lock: Callback when Secure Lock is clicked (Windows only)
         on_stop: Callback when Stop is clicked
     
     Returns:
@@ -253,6 +257,8 @@ def start_tray(
     if _tray_instance is None:
         _tray_instance = TrayIcon(
             on_settings=on_settings,
+            on_quick_lock=on_quick_lock,
+            on_secure_lock=on_secure_lock,
             on_stop=on_stop,
         )
     

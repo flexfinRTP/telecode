@@ -11,12 +11,12 @@ Commands:
   /diff     - Show git diff of changes
   /push     - Push committed changes to remote
   /pull     - Pull latest changes from remote
-  /accept   - Stage and commit all changes
+  /commit   - Stage and commit all changes
   /revert   - Discard all uncommitted changes
   /ai       - Execute AI prompt via Cursor CLI
     /ai <prompt>         - Send prompt to Cursor
-    /ai accept [msg]     - Accept and commit all changes
-    /ai revert           - Discard all changes
+    /ai accept           - Accept AI changes (Ctrl+Enter)
+    /ai reject           - Reject AI changes (Ctrl+Backspace)
     /ai continue <prompt>- Follow-up prompt
     /ai stop             - Clear session
     /ai status           - Check agent status
@@ -34,6 +34,7 @@ AUDIT: Reviewed 2026-02 - Rate limiting added, input sanitization
 """
 
 import os
+import sys
 import logging
 import asyncio
 import time
@@ -74,7 +75,7 @@ from .model_config import (
     AVAILABLE_MODELS,
     ModelTier
 )
-from .cursor_agent import CursorAgentBridge, get_agent_for_workspace, AgentState
+from .cursor_agent import CursorAgentBridge, get_agent_for_workspace, AgentState, CursorStatus
 
 logger = logging.getLogger("telecode.bot")
 
@@ -226,7 +227,7 @@ class TeleCodeBot:
             CommandHandler("diff", self._cmd_diff),
             CommandHandler("push", self._cmd_push),
             CommandHandler("pull", self._cmd_pull),
-            CommandHandler("accept", self._cmd_accept),
+            CommandHandler("commit", self._cmd_commit),
             CommandHandler("revert", self._cmd_revert),
             CommandHandler("log", self._cmd_log),
             CommandHandler("branch", self._cmd_branch),
@@ -240,6 +241,9 @@ class TeleCodeBot:
             # AI commands
             CommandHandler("ai", self._cmd_ai),
             
+            # Cursor control command
+            CommandHandler("cursor", self._cmd_cursor),
+            
             # Model selection commands
             CommandHandler("model", self._cmd_model),
             CommandHandler("models", self._cmd_models),
@@ -252,6 +256,9 @@ class TeleCodeBot:
             
             # AI control callback handler
             CallbackQueryHandler(self._cmd_ai_callback, pattern="^ai_"),
+            
+            # Cursor control callback handler (open/status)
+            CallbackQueryHandler(self._cmd_cursor_callback, pattern="^cursor_"),
             
             # Voice message handler
             MessageHandler(filters.VOICE, self._handle_voice),
@@ -273,9 +280,10 @@ class TeleCodeBot:
             BotCommand("diff", "Show changes (git diff)"),
             BotCommand("push", "Push to remote"),
             BotCommand("pull", "Pull from remote"),
-            BotCommand("accept", "Commit all changes"),
+            BotCommand("commit", "Commit all changes"),
             BotCommand("revert", "Discard changes"),
             BotCommand("ai", "Run AI prompt"),
+            BotCommand("cursor", "Check/open Cursor IDE"),
             BotCommand("model", "Select AI model"),
             BotCommand("models", "List available models"),
             BotCommand("cd", "Change directory"),
@@ -401,7 +409,7 @@ Use /model to change AI model.
   /diff - Show uncommitted changes
   /push - Push to remote
   /pull - Pull from remote
-  /accept [msg] - Commit all changes
+  /commit [msg] - Commit all changes
   /revert - Discard all changes ⚠️
   /log - Recent commits
   /branch - List branches
@@ -414,13 +422,14 @@ Use /model to change AI model.
 
 **AI Control:** 🤖
   /ai [prompt] - Send prompt to Cursor
-  /ai accept [msg] - Commit AI changes
-  /ai revert - Discard AI changes
+  /ai accept - Accept AI changes (Ctrl+Enter)
+  /ai reject - Reject AI changes (Ctrl+Backspace)
   /ai continue [prompt] - Follow-up
   /ai stop - Clear session
   /ai status - Check state
   /model - Select AI model
   /models - List available models
+  /cursor - Check Cursor status/open 💻
   _(or just send text/voice)_
 
 **System:**
@@ -491,12 +500,12 @@ Use /model to change AI model.
         if stat_result.success and stat_result.stdout.strip():
             message = f"📊 **Changes Summary:**\n```\n{stat_result.stdout.strip()}\n```"
             
-            # Build inline keyboard with expand and action buttons
+            # Build inline keyboard with expand and git action buttons
             keyboard = [
                 [InlineKeyboardButton("📖 View Full Diff", callback_data="diff_full")],
                 [
-                    InlineKeyboardButton("✅ Keep All", callback_data="diff_keep"),
-                    InlineKeyboardButton("🗑️ Undo All", callback_data="diff_undo"),
+                    InlineKeyboardButton("💾 Git Commit", callback_data="diff_keep"),
+                    InlineKeyboardButton("🗑️ Git Restore", callback_data="diff_undo"),
                 ],
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -540,9 +549,9 @@ Use /model to change AI model.
         await update.message.reply_text(self._truncate_message(message), parse_mode="Markdown")
     
     @require_auth
-    async def _cmd_accept(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _cmd_commit(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Stage and commit all changes."""
-        self.sentinel.log_command(update.effective_user.id, "/accept")
+        self.sentinel.log_command(update.effective_user.id, "/commit")
         
         # Get commit message from args or generate default
         args = context.args
@@ -627,7 +636,7 @@ Use /model to change AI model.
     
     @require_auth
     async def _cmd_cd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Change current directory."""
+        """Change current directory and check Cursor status."""
         if not context.args:
             await update.message.reply_text(
                 "Usage: /cd [path]\n\nExample: /cd myproject",
@@ -643,7 +652,36 @@ Use /model to change AI model.
         if success:
             # Show new location with git status
             info = self.cli.get_current_info()
-            await update.message.reply_text(f"✅ {message}\n\n{info}", parse_mode="Markdown")
+            
+            # Check Cursor status for this workspace
+            agent = self._get_cursor_agent()
+            cursor_status = agent.check_cursor_status()
+            
+            # Build status message
+            status_emoji = {
+                "not_running": "🔴",
+                "starting": "🟡",
+                "running": "🟠",
+                "ready": "🟢",
+            }
+            
+            cursor_emoji = status_emoji.get(cursor_status.get("status", ""), "⚪")
+            cursor_msg = cursor_status.get("message", "Unknown status")
+            
+            response = f"✅ {message}\n\n{info}\n\n💻 **Cursor:** {cursor_emoji} {cursor_msg}"
+            
+            # Add button to open Cursor if not already open for this workspace
+            if not cursor_status.get("workspace_open"):
+                keyboard = [[
+                    InlineKeyboardButton(
+                        "🚀 Open in Cursor", 
+                        callback_data=f"cursor_open"
+                    )
+                ]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(response, parse_mode="Markdown", reply_markup=reply_markup)
+            else:
+                await update.message.reply_text(response, parse_mode="Markdown")
         else:
             await update.message.reply_text(f"❌ {message}", parse_mode="Markdown")
     
@@ -834,14 +872,67 @@ _Press a button to confirm or cancel:_
 
 📂 **Location:** `{project_path}`
 🔀 **Git:** Initialized
-💻 **Cursor:** Opening...
-
-**Next steps:**
-• Start coding in Cursor
-• Use /ai to run prompts
-• Use /status to check git
-• Use /accept to commit changes
 """
+            await query.edit_message_text(result_message, parse_mode="Markdown")
+            
+            # Now open Cursor with status updates
+            agent = self._get_cursor_agent()
+            
+            pending_msg = await query.message.reply_text(
+                f"💻 **Opening Cursor...**\n\n"
+                f"📂 Workspace: `{project_name}`\n"
+                f"⏳ Status: Launching...",
+                parse_mode="Markdown"
+            )
+            
+            last_message = {"text": ""}
+            
+            async def status_callback(msg: str, is_complete: bool):
+                """Update the Telegram message with current status."""
+                if msg != last_message["text"]:
+                    last_message["text"] = msg
+                    try:
+                        if is_complete:
+                            if "✅" in msg:
+                                keyboard = [[
+                                    InlineKeyboardButton("🤖 Send AI Prompt", callback_data="ai_prompt_start"),
+                                ]]
+                                reply_markup = InlineKeyboardMarkup(keyboard)
+                                await pending_msg.edit_text(
+                                    f"💻 **Cursor Ready!**\n\n{msg}\n\n"
+                                    f"**Next steps:**\n"
+                                    f"• Start coding in Cursor\n"
+                                    f"• Use /ai to run prompts\n"
+                                    f"• Use /status to check git",
+                                    parse_mode="Markdown",
+                                    reply_markup=reply_markup
+                                )
+                            else:
+                                keyboard = [[
+                                    InlineKeyboardButton("🔄 Retry", callback_data="cursor_open"),
+                                ]]
+                                reply_markup = InlineKeyboardMarkup(keyboard)
+                                await pending_msg.edit_text(
+                                    f"💻 **Cursor Status**\n\n{msg}",
+                                    parse_mode="Markdown",
+                                    reply_markup=reply_markup
+                                )
+                        else:
+                            await pending_msg.edit_text(
+                                f"💻 **Opening Cursor**\n\n"
+                                f"📂 Workspace: `{project_name}`\n"
+                                f"{msg}",
+                                parse_mode="Markdown"
+                            )
+                    except Exception as e:
+                        logger.debug(f"Failed to update status message: {e}")
+            
+            # Open Cursor and wait
+            await agent.open_cursor_and_wait(
+                status_callback=status_callback,
+                timeout=30.0,
+                poll_interval=1.5
+            )
         else:
             result_message = f"""
 ❌ **Project Creation Failed**
@@ -850,8 +941,7 @@ _Press a button to confirm or cancel:_
 
 Please try again with /create
 """
-        
-        await query.edit_message_text(result_message, parse_mode="Markdown")
+            await query.edit_message_text(result_message, parse_mode="Markdown")
         
         # Clear user data
         context.user_data.pop('create_project_name', None)
@@ -890,6 +980,115 @@ Please try again with /create
         return ConversationHandler.END
     
     # ==========================================
+    # Cursor Commands
+    # ==========================================
+    
+    @require_auth
+    async def _cmd_cursor(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Check Cursor IDE status and open if needed.
+        
+        Usage:
+            /cursor         - Check status and show open button if needed
+            /cursor open    - Open Cursor with current workspace
+            /cursor status  - Just show status
+        """
+        self.sentinel.log_command(update.effective_user.id, "/cursor")
+        
+        agent = self._get_cursor_agent()
+        workspace_name = self.cli.current_dir.name
+        
+        # Check for subcommands
+        subcommand = context.args[0].lower() if context.args else None
+        
+        if subcommand == "open":
+            # Open Cursor for the current workspace with live status updates
+            pending_msg = await update.message.reply_text(
+                f"🚀 **Opening Cursor...**\n\n"
+                f"📂 Workspace: `{workspace_name}`\n"
+                f"⏳ Status: Launching...",
+                parse_mode="Markdown"
+            )
+            
+            last_message = {"text": ""}
+            
+            async def status_callback(message: str, is_complete: bool):
+                """Update the Telegram message with current status."""
+                if message != last_message["text"]:
+                    last_message["text"] = message
+                    try:
+                        if is_complete:
+                            if "✅" in message:
+                                keyboard = [[
+                                    InlineKeyboardButton("🤖 Send AI Prompt", callback_data="ai_prompt_start"),
+                                ]]
+                                reply_markup = InlineKeyboardMarkup(keyboard)
+                            else:
+                                keyboard = [[
+                                    InlineKeyboardButton("🔄 Retry", callback_data="cursor_open"),
+                                ]]
+                                reply_markup = InlineKeyboardMarkup(keyboard)
+                            
+                            await pending_msg.edit_text(
+                                f"💻 **Cursor Status**\n\n{message}",
+                                parse_mode="Markdown",
+                                reply_markup=reply_markup
+                            )
+                        else:
+                            await pending_msg.edit_text(
+                                f"💻 **Opening Cursor**\n\n"
+                                f"📂 Workspace: `{workspace_name}`\n"
+                                f"{message}",
+                                parse_mode="Markdown"
+                            )
+                    except Exception as e:
+                        logger.debug(f"Failed to update status message: {e}")
+            
+            result = await agent.open_cursor_and_wait(
+                status_callback=status_callback,
+                timeout=30.0,
+                poll_interval=1.5
+            )
+            return
+        
+        # Default: show status with options
+        status = agent.check_cursor_status()
+        
+        status_emoji = {
+            "not_running": "🔴 Not Running",
+            "starting": "🟡 Starting...",
+            "running": "🟠 Running (different workspace)",
+            "ready": "🟢 Ready",
+        }
+        
+        status_text = status_emoji.get(status.get("status", ""), "⚪ Unknown")
+        message_text = status.get("message", "Unable to determine status")
+        
+        response = f"""💻 **Cursor IDE Status**
+
+**Workspace:** `{workspace_name}`
+**Status:** {status_text}
+
+{message_text}
+
+**Commands:**
+• `/cursor open` - Open workspace in Cursor
+• `/cursor status` - Check status"""
+        
+        # Add action buttons based on status
+        if not status.get("workspace_open"):
+            keyboard = [[InlineKeyboardButton("🚀 Open in Cursor", callback_data="cursor_open")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(response, parse_mode="Markdown", reply_markup=reply_markup)
+        else:
+            keyboard = [[
+                InlineKeyboardButton("🤖 Send AI Prompt", callback_data="ai_prompt_start"),
+                InlineKeyboardButton("🔄 Refresh Status", callback_data="cursor_status"),
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(response, parse_mode="Markdown", reply_markup=reply_markup)
+    
+    # ==========================================
     # AI Commands
     # ==========================================
     
@@ -904,8 +1103,8 @@ Please try again with /create
         
         Usage:
             /ai <prompt>           - Send prompt to Cursor
-            /ai accept [message]   - Accept and commit all changes
-            /ai revert             - Discard all changes
+            /ai accept             - Accept AI changes (Ctrl+Enter)
+            /ai reject             - Reject AI changes (Ctrl+Backspace)
             /ai continue <prompt>  - Continue with follow-up prompt
             /ai stop               - Stop/clear current session
             /ai status             - Check agent status
@@ -919,9 +1118,9 @@ Please try again with /create
         remaining_args = context.args[1:] if len(context.args) > 1 else []
         
         if subcommand == "accept":
-            await self._cmd_ai_accept(update, remaining_args)
-        elif subcommand == "revert":
-            await self._cmd_ai_revert(update)
+            await self._cmd_ai_accept(update)
+        elif subcommand == "reject":
+            await self._cmd_ai_reject(update)
         elif subcommand == "continue":
             if remaining_args:
                 prompt = " ".join(remaining_args)
@@ -936,6 +1135,12 @@ Please try again with /create
             await self._cmd_ai_stop(update)
         elif subcommand == "status":
             await self._cmd_ai_status(update)
+        elif subcommand == "mode":
+            if remaining_args:
+                mode = remaining_args[0].lower()
+                await self._cmd_ai_mode(update, mode)
+            else:
+                await self._cmd_ai_mode(update, None)
         else:
             # Not a subcommand - treat entire args as prompt
             prompt = " ".join(context.args)
@@ -949,6 +1154,7 @@ Please try again with /create
         # Check current status
         agent = self._get_cursor_agent()
         status = agent.get_status()
+        current_mode = agent.get_prompt_mode()
         
         state_emoji = {
             "idle": "⚪",
@@ -957,87 +1163,244 @@ Please try again with /create
             "changes_pending": "🟢",
             "processing": "🔵"
         }
+        mode_emoji = {"agent": "🤖", "chat": "💬", "inline": "✏️"}.get(current_mode, "❓")
         
         state = status.data.get("state", "idle") if status.data else "idle"
         
         help_text = f"""
-🤖 **AI Commands** (Cursor Integration)
+🤖 **AI Commands** (Cursor only - no git)
 
 **Send Prompt:**
-  `/ai <prompt>` - Send to Cursor AI
+  `/ai <prompt>` - Send to Cursor
 
-**Control Changes:**
-  `/ai accept [msg]` - Commit all changes
-  `/ai revert` - Discard all changes
-  `/ai continue <prompt>` - Follow-up prompt
+**Cursor Controls:** (buttons OR commands)
+  `/ai accept` (✅) - Accept changes (Ctrl+Enter)
+  `/ai reject` (❌) - Reject changes (Ctrl+Backspace)
+  📊 Check - See changed files
+  📖 Diff - View changes
+
+**AI Commands:**
+  `/ai continue <prompt>` - Follow-up
   `/ai stop` - Clear session
+  `/ai status` - Check state
+  `/ai mode [agent|chat]` - Set mode
 
-**Status:**
-  `/ai status` - Check current state
+**Git Commands:** (separate)
+  `/commit` - Git commit
+  `/revert` - Git restore
+  `/push` - Git push
 
-**Current State:** {state_emoji.get(state, "⚪")} `{state}`
+**Mode:** {mode_emoji} `{current_mode}` {'(auto-save)' if current_mode == 'agent' else '(manual)'}
 **Model:** {current_model.emoji} {current_model.display_name}
-**Workspace:** `{self.cli.current_dir.name}`
 
-💡 _You can also just send text as AI prompt!_
+💡 _Just send text as AI prompt!_
 """
         await update.message.reply_text(help_text, parse_mode="Markdown")
     
     async def _execute_ai_prompt(self, update: Update, prompt: str):
-        """Execute an AI prompt via Cursor Agent Bridge - sends directly to Composer!"""
+        """Execute an AI prompt via Cursor Agent Bridge with live status updates and screenshot."""
+        from pathlib import Path
+        import random
+        
         user_id = update.effective_user.id
         self.sentinel.log_command(user_id, f"/ai {prompt[:50]}...")
         
         # Get user's selected model
         current_model = self.user_prefs.get_user_model(user_id)
+        workspace_name = self.cli.current_dir.name
         
-        # Show "sending" message
+        # Show initial status message
         status_msg = await update.message.reply_text(
-            f"🤖 Sending to Cursor with **{current_model.display_name}**...\n\n_{prompt}_", 
+            f"📤 **Sending to Cursor...**\n\n"
+            f"🤖 **{current_model.display_name}**\n"
+            f"📂 `{workspace_name}`\n\n"
+            f"📝 _{prompt[:100]}{'...' if len(prompt) > 100 else ''}_", 
             parse_mode="Markdown"
         )
         
         # Get the Cursor Agent
         agent = self._get_cursor_agent()
         
-        # Send prompt DIRECTLY to Cursor Composer
-        result = agent.send_prompt(prompt, model=current_model.id)
+        # Track completion state
+        final_screenshot_path = None
+        final_status = None
+        final_files = []
+        
+        # Define status callback to update Telegram message
+        async def status_callback(message: str, is_complete: bool, screenshot_path=None):
+            nonlocal final_screenshot_path, final_status, final_files
+            
+            if screenshot_path:
+                final_screenshot_path = screenshot_path
+            
+            if not is_complete:
+                # Update the status message with progress
+                try:
+                    await status_msg.edit_text(
+                        f"{message}\n\n"
+                        f"🤖 **{current_model.display_name}**\n"
+                        f"📂 `{workspace_name}`\n\n"
+                        f"📝 _{prompt[:80]}{'...' if len(prompt) > 80 else ''}_",
+                        parse_mode="Markdown"
+                    )
+                except Exception:
+                    pass
+        
+        # Check if Cursor is open - if not, open it first
+        cursor_status = agent.check_cursor_status()
+        
+        if not cursor_status.get("workspace_open"):
+            # Update message to show we're opening Cursor
+            try:
+                await status_msg.edit_text(
+                    f"🚀 **Opening Cursor...**\n\n"
+                    f"📂 `{workspace_name}`\n"
+                    f"⏳ Please wait...\n\n"
+                    f"📝 _{prompt[:80]}{'...' if len(prompt) > 80 else ''}_",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+            
+            # Define callback to update status
+            async def cursor_open_callback(msg: str, is_complete: bool):
+                if not is_complete:
+                    try:
+                        await status_msg.edit_text(
+                            f"🚀 **Opening Cursor...**\n\n"
+                            f"📂 `{workspace_name}`\n"
+                            f"{msg}\n\n"
+                            f"📝 _{prompt[:80]}{'...' if len(prompt) > 80 else ''}_",
+                            parse_mode="Markdown"
+                        )
+                    except Exception:
+                        pass
+            
+            # Wait for Cursor to open
+            open_result = await agent.open_cursor_and_wait(
+                status_callback=cursor_open_callback,
+                timeout=30.0,
+                poll_interval=1.5
+            )
+            
+            if not open_result.success:
+                await status_msg.edit_text(
+                    f"❌ **Failed to open Cursor**\n\n{open_result.message}\n\n{open_result.error or ''}",
+                    parse_mode="Markdown"
+                )
+                return
+        
+        # Send prompt and wait for completion with live status updates
+        result = await agent.send_prompt_and_wait(
+            prompt=prompt,
+            status_callback=status_callback,
+            model=current_model.id,
+            timeout=90.0,
+            poll_interval=2.0,
+            stable_threshold=3
+        )
         
         if result.success:
-            # Build response
-            message = f"""✅ **Prompt Sent to Cursor!**
-
-🚀 Your prompt was sent directly to Cursor Composer via keyboard automation.
-
-📝 **Prompt:** _{prompt[:100]}{'...' if len(prompt) > 100 else ''}_
-
-⏳ **AI is now processing...**
-
-When the AI finishes making changes, use:
-• `/ai status` - Check for changes
-• `/ai accept` - Commit the changes
-• `/ai revert` - Discard the changes
-• `/ai continue` - Send follow-up"""
+            data = result.data or {}
+            status = data.get("status", "completed")
+            mode = data.get("mode", "agent")
+            files_changed = data.get("files_changed", 0)
+            elapsed = data.get("elapsed_seconds", 0)
+            files = data.get("files", [])
+            screenshot_path = data.get("screenshot")
             
-            # Build inline keyboard for quick actions
+            # Build status emoji and message based on result
+            if status == "completed":
+                status_emoji = "✅"
+                status_text = f"**Cursor AI Completed!** ({files_changed} files, {elapsed}s)"
+            elif status == "waiting":
+                status_emoji = "⏳"
+                status_text = f"**Cursor AI may be waiting...** ({elapsed}s)"
+            else:  # timeout
+                status_emoji = "⏱️"
+                status_text = f"**Timeout** - Check Cursor ({elapsed}s)"
+            
+            # Mode info
+            auto_save = mode == "agent"
+            if auto_save:
+                mode_info = "🤖 Agent mode - Files auto-saved"
+            else:
+                mode_info = "💬 Chat mode - Click Accept to apply"
+            
+            # Files list (truncated)
+            files_preview = ""
+            if files:
+                files_list = files[:5]
+                files_preview = "\n📁 " + ", ".join(f"`{f}`" for f in files_list)
+                if len(files) > 5:
+                    files_preview += f" _+{len(files)-5} more_"
+            
+            # Build final message
+            message = f"""{status_emoji} {status_text}
+
+{mode_info}
+{files_preview}
+
+📝 _{prompt[:80]}{'...' if len(prompt) > 80 else ''}_"""
+            
+            # Build inline keyboard with ALL controls in one grid
             keyboard = [
                 [
-                    InlineKeyboardButton("📊 Check Changes", callback_data="ai_check"),
-                    InlineKeyboardButton("📖 View Diff", callback_data="diff_full"),
+                    InlineKeyboardButton("📊 Check", callback_data="ai_check"),
+                    InlineKeyboardButton("📖 Diff", callback_data="ai_view_diff"),
+                    InlineKeyboardButton("✅ Accept", callback_data="ai_accept"),
                 ],
                 [
-                    InlineKeyboardButton("✅ Accept All", callback_data="ai_accept"),
-                    InlineKeyboardButton("🗑️ Revert All", callback_data="ai_revert"),
+                    InlineKeyboardButton("❌ Reject", callback_data="ai_reject"),
+                    InlineKeyboardButton("▶️ Run", callback_data="ai_run"),
+                    InlineKeyboardButton("➡️ Continue", callback_data="ai_send_continue"),
                 ],
-                [InlineKeyboardButton("▶️ Continue", callback_data="ai_continue_prompt")],
+                [
+                    InlineKeyboardButton("⚙️ Mode", callback_data="ai_mode"),
+                    InlineKeyboardButton("🧹 Cleanup", callback_data="ai_cleanup"),
+                ],
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await update.message.reply_text(
-                self._truncate_message(message), 
-                parse_mode="Markdown",
-                reply_markup=reply_markup
-            )
+            # Send screenshot with the completion message
+            if screenshot_path and Path(screenshot_path).exists():
+                try:
+                    # Delete the old status message
+                    await status_msg.delete()
+                except Exception:
+                    pass
+                
+                # Send photo with caption and buttons
+                try:
+                    with open(screenshot_path, 'rb') as photo:
+                        await update.message.reply_photo(
+                            photo=photo,
+                            caption=self._truncate_message(message)[:1024],  # Photo captions max 1024 chars
+                            parse_mode="Markdown",
+                            reply_markup=reply_markup
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to send screenshot: {e}")
+                    # Fallback to text message
+                    await update.message.reply_text(
+                        self._truncate_message(message),
+                        parse_mode="Markdown",
+                        reply_markup=reply_markup
+                    )
+            else:
+                # No screenshot - just update the message
+                try:
+                    await status_msg.edit_text(
+                        self._truncate_message(message), 
+                        parse_mode="Markdown",
+                        reply_markup=reply_markup
+                    )
+                except Exception:
+                    await update.message.reply_text(
+                        self._truncate_message(message), 
+                        parse_mode="Markdown",
+                        reply_markup=reply_markup
+                    )
         else:
             error = result.error or "Unknown error"
             message = f"❌ **Failed to Send Prompt**\n\n{result.message}\n\n```\n{error}\n```"
@@ -1048,62 +1411,60 @@ When the AI finishes making changes, use:
             elif "cursor" in error.lower():
                 message += "\n\n💡 **Tip:** Make sure Cursor is installed and `cursor` is in your PATH."
             
-            await update.message.reply_text(self._truncate_message(message), parse_mode="Markdown")
+            # Update the status message with the error
+            try:
+                await status_msg.edit_text(self._truncate_message(message), parse_mode="Markdown")
+            except Exception:
+                await update.message.reply_text(self._truncate_message(message), parse_mode="Markdown")
     
-    async def _cmd_ai_accept(self, update: Update, args: list):
-        """Accept and commit all AI changes."""
+    async def _cmd_ai_accept(self, update: Update):
+        """Accept all AI changes in Cursor (uses Ctrl+Enter)."""
         user_id = update.effective_user.id
         self.sentinel.log_command(user_id, "/ai accept")
         
         agent = self._get_cursor_agent()
         
-        # Custom commit message if provided
-        message = " ".join(args) if args else None
-        
-        result = agent.accept_changes(message)
+        # Use Cursor's Accept (Ctrl+Enter)
+        result = agent.accept_changes_via_cursor()
         
         if result.success:
-            data = result.data or {}
-            response = f"""✅ **Changes Accepted!**
+            response = """✅ **Changes Accepted in Cursor!**
 
-📝 **Commit:** {data.get('commit_message', 'TeleCode AI commit')}
-📁 **Files:** {data.get('files_committed', 0)} committed
+The AI changes have been applied via Ctrl+Enter.
 
-Use `/push` to push to remote."""
+📌 _This only affects Cursor, not git._
+💡 _Use `/commit` to git commit, `/push` to push._"""
         else:
             response = f"❌ **Accept Failed**\n\n{result.message}\n\n{result.error or ''}"
         
         await update.message.reply_text(response, parse_mode="Markdown")
     
-    async def _cmd_ai_revert(self, update: Update):
-        """Revert all AI changes with confirmation."""
+    async def _cmd_ai_reject(self, update: Update):
+        """Reject AI changes in Cursor (uses Ctrl+Backspace or Escape)."""
         user_id = update.effective_user.id
-        self.sentinel.log_command(user_id, "/ai revert")
+        self.sentinel.log_command(user_id, "/ai reject")
         
         agent = self._get_cursor_agent()
         
-        # First check what we're reverting
-        check = agent.check_changes()
+        # Show confirmation for Cursor-only reject
+        keyboard = [[
+            InlineKeyboardButton("⚠️ Yes, Reject in Cursor", callback_data="ai_reject_confirm"),
+            InlineKeyboardButton("❌ Cancel", callback_data="ai_reject_cancel"),
+        ]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
-        if check.data and check.data.get("has_changes"):
-            file_count = check.data.get("file_count", 0)
-            
-            # Show confirmation
-            keyboard = [[
-                InlineKeyboardButton(f"⚠️ Yes, Revert {file_count} files", callback_data="ai_revert_confirm"),
-                InlineKeyboardButton("❌ Cancel", callback_data="ai_revert_cancel"),
-            ]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                f"⚠️ **Confirm Revert**\n\n"
-                f"This will **permanently discard** {file_count} file(s)!\n\n"
-                f"**This cannot be undone!**",
-                parse_mode="Markdown",
-                reply_markup=reply_markup
-            )
-        else:
-            await update.message.reply_text("✅ No changes to revert.", parse_mode="Markdown")
+        current_mode = agent.get_prompt_mode()
+        method = "Escape" if current_mode == "chat" else "Ctrl+Backspace"
+        
+        await update.message.reply_text(
+            f"⚠️ **Confirm Reject**\n\n"
+            f"This will reject AI changes **in Cursor only**.\n\n"
+            f"🔄 Method: {method}\n\n"
+            f"📌 _This does NOT affect git._\n"
+            f"💡 _For git restore, use `/revert CONFIRM` instead._",
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
     
     async def _cmd_ai_continue(self, update: Update, prompt: str):
         """Continue with a follow-up prompt."""
@@ -1143,6 +1504,66 @@ Use `/push` to push to remote."""
             parse_mode="Markdown"
         )
     
+    async def _cmd_ai_mode(self, update: Update, mode: Optional[str]):
+        """Set or show the AI prompt mode."""
+        user_id = update.effective_user.id
+        agent = self._get_cursor_agent()
+        
+        if mode:
+            # Set mode
+            self.sentinel.log_command(user_id, f"/ai mode {mode}")
+            result = agent.set_prompt_mode(mode)
+            
+            if result.success:
+                data = result.data or {}
+                description = data.get("description", "")
+                auto_save = data.get("auto_save", False)
+                
+                message = f"✅ **Mode Changed!**\n\n{description}"
+                if auto_save:
+                    message += "\n\n💡 _Files auto-save, Reject uses Ctrl+Z_"
+                else:
+                    message += "\n\n⚠️ _Click Accept to apply, Reject uses Escape_"
+                
+                await update.message.reply_text(message, parse_mode="Markdown")
+            else:
+                await update.message.reply_text(
+                    f"❌ {result.error}\n\nValid modes: `agent`, `chat`",
+                    parse_mode="Markdown"
+                )
+        else:
+            # Show current mode with selection buttons
+            self.sentinel.log_command(user_id, "/ai mode")
+            current_mode = agent.get_prompt_mode()
+            
+            keyboard = [
+                [InlineKeyboardButton(
+                    f"{'✓ ' if current_mode == 'agent' else ''}🤖 Agent (auto-save)", 
+                    callback_data="ai_mode_agent"
+                )],
+                [InlineKeyboardButton(
+                    f"{'✓ ' if current_mode == 'chat' else ''}💬 Chat (manual keep)", 
+                    callback_data="ai_mode_chat"
+                )],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            mode_emoji = {"agent": "🤖", "chat": "💬"}.get(current_mode, "❓")
+            
+            await update.message.reply_text(
+                f"⚙️ **Prompt Mode**\n\n"
+                f"Current: {mode_emoji} **{current_mode.title()}**\n\n"
+                f"🤖 **Agent** - Auto-saves files to disk (SAFEST)\n"
+                f"   _Files saved immediately - won't lose work_\n"
+                f"   _Reject uses Ctrl+Z to undo_\n\n"
+                f"💬 **Chat** - Proposed changes need Accept\n"
+                f"   _More control, review before accepting_\n"
+                f"   _Reject uses Escape to discard_\n\n"
+                f"Quick switch: `/ai mode agent` or `/ai mode chat`",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+    
     async def _cmd_ai_status(self, update: Update):
         """Show current AI agent status."""
         user_id = update.effective_user.id
@@ -1164,12 +1585,19 @@ Use `/push` to push to remote."""
             }
             
             state = data.get("state", "idle")
+            agent_count = data.get("agent_count", 0)
+            
+            # Get current mode from agent
+            current_prompt_mode = agent.get_prompt_mode()
+            mode_emoji = {"agent": "🤖", "chat": "💬"}.get(current_prompt_mode, "❓")
             
             response = f"""📊 **AI Agent Status**
 
 **State:** {state_emoji.get(state, state)}
 **Workspace:** `{Path(data.get('workspace', '')).name}`
 **Model:** {current_model.emoji} {current_model.display_name}
+**Mode:** {mode_emoji} {current_prompt_mode.title()} {'(auto-save)' if current_prompt_mode == 'agent' else '(manual keep)'}
+**Agents Open:** {agent_count}
 
 **Changes:**
   • Detected: {'✅ Yes' if data.get('changes_detected') else '❌ No'}
@@ -1185,14 +1613,14 @@ Use `/push` to push to remote."""
                     files_list += f"\n  _...and {len(data['pending_files']) - 5} more_"
                 response += f"\n\n**Pending Files:**\n{files_list}"
             
-            # Add action buttons if there are pending changes
+            # Add action buttons if there are pending changes (Cursor controls only, no git)
             if data.get('changes_detected'):
                 keyboard = [
                     [
-                        InlineKeyboardButton("✅ Accept All", callback_data="ai_accept"),
-                        InlineKeyboardButton("🗑️ Revert All", callback_data="ai_revert"),
+                        InlineKeyboardButton("✅ Accept", callback_data="ai_accept"),
+                        InlineKeyboardButton("❌ Reject", callback_data="ai_reject"),
                     ],
-                    [InlineKeyboardButton("📖 View Diff", callback_data="diff_full")],
+                    [InlineKeyboardButton("📖 View Diff", callback_data="ai_view_diff")],
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await update.message.reply_text(response, parse_mode="Markdown", reply_markup=reply_markup)
@@ -1382,14 +1810,14 @@ Your next /ai command will use this model.
             )
         
         elif callback_data == "diff_keep":
-            # Keep All - stage and commit all changes (equivalent to Cursor's "Keep All")
-            self.sentinel.log_command(user_id, "/accept (Keep All)")
+            # Git Commit - stage and commit all changes
+            self.sentinel.log_command(user_id, "/commit (git commit)")
             
             # Stage all changes
             add_result = self.cli.git_add_all()
             if not add_result.success:
                 await query.message.reply_text(
-                    f"❌ Failed to stage changes: {add_result.stderr}",
+                    f"❌ Git stage failed: {add_result.stderr}",
                     parse_mode="Markdown"
                 )
                 return
@@ -1399,60 +1827,60 @@ Your next /ai command will use this model.
             commit_result = self.cli.git_commit(commit_msg)
             
             if commit_result.success:
-                # Update original message to show kept
                 try:
                     await query.edit_message_text(
-                        query.message.text + "\n\n✅ **Changes kept and committed!**",
+                        query.message.text + "\n\n💾 **Git committed!**\n_Use /push to push to remote._",
                         parse_mode="Markdown"
                     )
                 except Exception:
-                    await query.message.reply_text("✅ **Changes kept and committed!**", parse_mode="Markdown")
+                    await query.message.reply_text("💾 **Git committed!**\n_Use /push to push._", parse_mode="Markdown")
             else:
                 await query.message.reply_text(
-                    f"❌ Commit failed: {commit_result.stderr}",
+                    f"❌ Git commit failed: {commit_result.stderr}",
                     parse_mode="Markdown"
                 )
         
         elif callback_data == "diff_undo":
-            # Undo All - show confirmation button (two-step for safety)
-            self.sentinel.log_command(user_id, "/revert (Undo All - step 1)")
+            # Git Restore - show confirmation button (two-step for safety)
+            self.sentinel.log_command(user_id, "/revert (git restore - step 1)")
             
             # Show confirmation with a confirm button
             keyboard = [[
-                InlineKeyboardButton("⚠️ Yes, Undo All Changes", callback_data="diff_undo_confirm"),
+                InlineKeyboardButton("⚠️ Yes, Git Restore", callback_data="diff_undo_confirm"),
                 InlineKeyboardButton("❌ Cancel", callback_data="diff_undo_cancel"),
             ]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await query.message.reply_text(
-                "⚠️ **Confirm Undo All**\n\n"
-                "This will **permanently discard** ALL uncommitted changes!\n\n"
-                "**This cannot be undone!**",
+                "⚠️ **Confirm Git Restore**\n\n"
+                "This will run `git restore .` + `git clean -fd`\n"
+                "**Permanently discards** ALL uncommitted changes!\n\n"
+                "⚠️ **This cannot be undone!**",
                 parse_mode="Markdown",
                 reply_markup=reply_markup
             )
         
         elif callback_data == "diff_undo_confirm":
-            # Actually undo/revert all changes
-            self.sentinel.log_command(user_id, "/revert (Undo All - confirmed)")
+            # Actually git restore all changes
+            self.sentinel.log_command(user_id, "/revert (git restore - confirmed)")
             
             result = self.cli.git_restore()
             
             if result.success:
                 try:
                     await query.edit_message_text(
-                        "🗑️ **All changes have been undone!**\n\n"
-                        "Your working directory is now clean.",
+                        "🗑️ **Git restore complete!**\n\n"
+                        "All uncommitted changes have been discarded.",
                         parse_mode="Markdown"
                     )
                 except Exception:
                     await query.message.reply_text(
-                        "🗑️ **All changes have been undone!**",
+                        "🗑️ **Git restore complete!**",
                         parse_mode="Markdown"
                     )
             else:
                 await query.message.reply_text(
-                    f"❌ Undo failed: {result.stderr}",
+                    f"❌ Git restore failed: {result.stderr}",
                     parse_mode="Markdown"
                 )
         
@@ -1496,37 +1924,47 @@ Your next /ai command will use this model.
         agent = self._get_cursor_agent()
         
         if callback_data == "ai_check":
-            # Check for changes
+            # Check for changes - show diff summary from latest prompt
             self.sentinel.log_command(user_id, "/ai status (button)")
             
-            result = agent.check_changes()
+            # Use the new get_diff_summary method for a nicer output
+            result = agent.get_diff_summary()
             
             if result.success and result.data:
                 data = result.data
+                message = data.get("summary", "No summary available")
+                
+                # Add action buttons if there are changes (Cursor controls only, no git)
                 if data.get("has_changes"):
-                    diff_stat = data.get("diff_stat", "")
-                    message = f"📊 **Changes Detected!**\n\n**{data.get('file_count', 0)} files modified**\n\n```\n{diff_stat}\n```"
+                    keyboard = [
+                        [
+                            InlineKeyboardButton("✅ Accept", callback_data="ai_accept"),
+                            InlineKeyboardButton("❌ Reject", callback_data="ai_reject"),
+                        ],
+                        [InlineKeyboardButton("📖 View Full Diff", callback_data="diff_full")],
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    await query.message.reply_text(message, parse_mode="Markdown", reply_markup=reply_markup)
                 else:
-                    message = "✅ No changes detected yet.\n\nMake sure to run AI in Cursor first!"
+                    await query.message.reply_text(message, parse_mode="Markdown")
             else:
                 message = f"❌ Check failed: {result.error or 'Unknown error'}"
-            
-            await query.message.reply_text(message, parse_mode="Markdown")
+                await query.message.reply_text(message, parse_mode="Markdown")
         
         elif callback_data == "ai_accept":
-            # Accept all changes
+            # Accept changes via Cursor automation (Ctrl+Enter)
             self.sentinel.log_command(user_id, "/ai accept (button)")
             
-            result = agent.accept_changes()
+            result = agent.accept_changes_via_cursor()
             
             if result.success:
-                data = result.data or {}
-                message = f"""✅ **Changes Accepted!**
+                shortcut = result.data.get("shortcut", "Ctrl+Enter") if result.data else "Ctrl+Enter"
+                message = f"""✅ **Changes Accepted in Cursor!**
 
-📝 **Commit:** {data.get('commit_message', 'TeleCode AI commit')}
-📁 **Files:** {data.get('files_committed', 0)} committed
+The AI changes have been applied via {shortcut}.
 
-Use `/push` to push to remote."""
+📌 _This only affects Cursor, not git._
+💡 _Use `/commit` to git commit, `/push` to push._"""
             else:
                 message = f"❌ Accept failed: {result.error or result.message}"
             
@@ -1538,62 +1976,62 @@ Use `/push` to push to remote."""
             except Exception:
                 await query.message.reply_text(message, parse_mode="Markdown")
         
-        elif callback_data == "ai_revert":
-            # Show revert confirmation
-            self.sentinel.log_command(user_id, "/ai revert (button)")
+        elif callback_data == "ai_reject":
+            # Show reject confirmation (Cursor only, no git)
+            self.sentinel.log_command(user_id, "/ai reject (button)")
             
-            check = agent.check_changes()
+            current_mode = agent.get_prompt_mode()
+            method = "Escape" if current_mode == "chat" else "Ctrl+Backspace"
             
-            if check.data and check.data.get("has_changes"):
-                file_count = check.data.get("file_count", 0)
-                
-                keyboard = [[
-                    InlineKeyboardButton(f"⚠️ Yes, Revert {file_count} files", callback_data="ai_revert_confirm"),
-                    InlineKeyboardButton("❌ Cancel", callback_data="ai_revert_cancel"),
-                ]]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                
-                await query.message.reply_text(
-                    f"⚠️ **Confirm Revert**\n\n"
-                    f"This will **permanently discard** {file_count} file(s)!\n\n"
-                    f"**This cannot be undone!**",
-                    parse_mode="Markdown",
-                    reply_markup=reply_markup
-                )
-            else:
-                await query.message.reply_text("✅ No changes to revert.", parse_mode="Markdown")
+            keyboard = [[
+                InlineKeyboardButton("⚠️ Yes, Reject Changes", callback_data="ai_reject_confirm"),
+                InlineKeyboardButton("❌ Cancel", callback_data="ai_reject_cancel"),
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.message.reply_text(
+                f"⚠️ **Confirm Reject**\n\n"
+                f"This will reject the AI changes **in Cursor**.\n\n"
+                f"🔄 Method: {method}\n\n"
+                f"📌 _This uses Cursor automation, not git._\n"
+                f"💡 _For git revert, use `/revert CONFIRM` instead._",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
         
-        elif callback_data == "ai_revert_confirm":
-            # Actually revert
-            self.sentinel.log_command(user_id, "/ai revert (confirmed)")
+        elif callback_data == "ai_reject_confirm":
+            # Actually reject using Cursor automation (Ctrl+Backspace or Escape)
+            self.sentinel.log_command(user_id, "/ai reject (confirmed)")
             
-            result = agent.revert_changes()
+            result = agent.revert_changes_via_cursor()
             
             if result.success:
                 data = result.data or {}
-                message = f"""🗑️ **All Changes Reverted!**
+                shortcut = data.get("shortcut", "Ctrl+Backspace")
+                message = f"""❌ **Changes Rejected in Cursor!**
 
-📁 **Files reverted:** {data.get('files_reverted', 0)}
+🔄 Method: {shortcut}
 
-Working directory is now clean."""
+📌 _This only affected Cursor, not git._
+💡 _Use `/revert CONFIRM` for git restore._"""
             else:
-                message = f"❌ Revert failed: {result.error or result.message}"
+                message = f"❌ Reject failed: {result.error or result.message}"
             
             try:
                 await query.edit_message_text(message, parse_mode="Markdown")
             except Exception:
                 await query.message.reply_text(message, parse_mode="Markdown")
         
-        elif callback_data == "ai_revert_cancel":
-            # Cancel revert
+        elif callback_data == "ai_reject_cancel":
+            # Cancel reject
             try:
                 await query.edit_message_text(
-                    "✅ Revert cancelled. Your changes are still intact.",
+                    "✅ Reject cancelled. Your changes are still intact.",
                     parse_mode="Markdown"
                 )
             except Exception:
                 await query.message.reply_text(
-                    "✅ Revert cancelled. Your changes are still intact.",
+                    "✅ Reject cancelled. Your changes are still intact.",
                     parse_mode="Markdown"
                 )
         
@@ -1606,6 +2044,344 @@ Working directory is now clean."""
                 "Send your next prompt as a message, or use:\n"
                 "`/ai continue <your follow-up prompt>`\n\n"
                 "_Example: \"Now add unit tests for the changes\"_",
+                parse_mode="Markdown"
+            )
+        
+        elif callback_data == "ai_view_diff":
+            # View diff from latest prompt only
+            self.sentinel.log_command(user_id, "/ai diff (button)")
+            
+            result = agent.get_diff(full=True, latest_only=True)
+            
+            if result.success and result.data:
+                diff_content = result.data.get("diff", "")
+                if diff_content:
+                    # Truncate if too long
+                    if len(diff_content) > 3500:
+                        diff_content = diff_content[:3500] + "\n\n... (truncated)"
+                    message = f"📖 **Diff from Latest Prompt:**\n\n```diff\n{diff_content}\n```"
+                else:
+                    message = "_(No diff available - files may be new/untracked)_"
+                
+                await query.message.reply_text(
+                    self._truncate_message(message),
+                    parse_mode="Markdown"
+                )
+            else:
+                await query.message.reply_text(
+                    f"❌ Failed to get diff: {result.error or 'Unknown error'}",
+                    parse_mode="Markdown"
+                )
+        
+        elif callback_data == "ai_cleanup":
+            # Cleanup old agent tabs
+            self.sentinel.log_command(user_id, "/ai cleanup (button)")
+            
+            result = agent.cleanup_agents(max_agents=5)
+            
+            if result.success:
+                data = result.data or {}
+                agents_closed = data.get("agents_closed", 0)
+                agent_count = data.get("agent_count", 0)
+                
+                if agents_closed > 0:
+                    message = f"🧹 **Cleaned up {agents_closed} agent tab(s)**\n\nRemaining agents: {agent_count}"
+                else:
+                    message = f"✅ No cleanup needed.\n\nCurrent agent count: {agent_count}"
+                
+                await query.message.reply_text(message, parse_mode="Markdown")
+            else:
+                await query.message.reply_text(
+                    f"❌ Cleanup failed: {result.error or 'Unknown error'}",
+                    parse_mode="Markdown"
+                )
+        
+        elif callback_data == "ai_mode":
+            # Show mode selection
+            self.sentinel.log_command(user_id, "/ai mode (button)")
+            
+            current_mode = agent.get_prompt_mode()
+            
+            keyboard = [
+                [InlineKeyboardButton(
+                    f"{'✓ ' if current_mode == 'agent' else ''}🤖 Agent (auto-save)", 
+                    callback_data="ai_mode_agent"
+                )],
+                [InlineKeyboardButton(
+                    f"{'✓ ' if current_mode == 'chat' else ''}💬 Chat (manual keep)", 
+                    callback_data="ai_mode_chat"
+                )],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.message.reply_text(
+                f"⚙️ **Select Prompt Mode**\n\n"
+                f"Current: **{current_mode}**\n\n"
+                f"🤖 **Agent** - Auto-saves files to disk (SAFEST)\n"
+                f"   _Won't lose work, Reject uses Ctrl+Z_\n\n"
+                f"💬 **Chat** - Proposed changes need Accept\n"
+                f"   _More control, Reject uses Escape_",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+        
+        elif callback_data.startswith("ai_mode_"):
+            # Set mode
+            new_mode = callback_data.replace("ai_mode_", "")
+            self.sentinel.log_command(user_id, f"/ai mode {new_mode}")
+            
+            result = agent.set_prompt_mode(new_mode)
+            
+            if result.success:
+                data = result.data or {}
+                description = data.get("description", "")
+                auto_save = data.get("auto_save", False)
+                
+                message = f"✅ **Mode Changed!**\n\n{description}"
+                if auto_save:
+                    message += "\n\n💡 _Files auto-save, Reject uses Ctrl+Z_"
+                else:
+                    message += "\n\n⚠️ _Click Accept to apply, Reject uses Escape_"
+                
+                try:
+                    await query.edit_message_text(message, parse_mode="Markdown")
+                except Exception:
+                    await query.message.reply_text(message, parse_mode="Markdown")
+            else:
+                await query.message.reply_text(
+                    f"❌ Failed: {result.error or 'Unknown error'}",
+                    parse_mode="Markdown"
+                )
+        
+        elif callback_data == "ai_run":
+            # Approve a pending terminal command in Cursor
+            self.sentinel.log_command(user_id, "/ai run (button)")
+            
+            # Show confirmation first
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Yes, Run It", callback_data="ai_run_confirm"),
+                    InlineKeyboardButton("🚫 Cancel", callback_data="ai_cancel"),
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.message.reply_text(
+                "⚠️ **Cursor wants to run a command**\n\n"
+                "The AI is requesting to execute a terminal command.\n\n"
+                "**Do you want to approve this?**\n\n"
+                "_This will press Enter in Cursor to confirm._",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+        
+        elif callback_data == "ai_run_confirm":
+            # Confirmed - approve the run command
+            self.sentinel.log_command(user_id, "/ai run confirm")
+            
+            result = agent.approve_run()
+            
+            if result.success:
+                message = f"✅ **Command Approved!**\n\n{result.message}\n\n_The AI will now execute the command._"
+            else:
+                message = f"❌ **Failed to approve:** {result.error or result.message}"
+            
+            try:
+                await query.edit_message_text(message, parse_mode="Markdown")
+            except Exception:
+                await query.message.reply_text(message, parse_mode="Markdown")
+        
+        elif callback_data == "ai_web_search":
+            # Approve a pending web search in Cursor
+            self.sentinel.log_command(user_id, "/ai web_search (button)")
+            
+            # Show confirmation first
+            keyboard = [
+                [
+                    InlineKeyboardButton("🌐 Yes, Search", callback_data="ai_web_search_confirm"),
+                    InlineKeyboardButton("🚫 Cancel", callback_data="ai_cancel"),
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.message.reply_text(
+                "🌐 **Cursor wants to search the web**\n\n"
+                "The AI is requesting to perform a web search for context.\n\n"
+                "**Do you want to approve this?**\n\n"
+                "_This will press Enter in Cursor to confirm._",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+        
+        elif callback_data == "ai_web_search_confirm":
+            # Confirmed - approve the web search
+            self.sentinel.log_command(user_id, "/ai web_search confirm")
+            
+            result = agent.approve_web_search()
+            
+            if result.success:
+                message = f"🌐 **Web Search Approved!**\n\n{result.message}\n\n_The AI will now search the web._"
+            else:
+                message = f"❌ **Failed to approve:** {result.error or result.message}"
+            
+            try:
+                await query.edit_message_text(message, parse_mode="Markdown")
+            except Exception:
+                await query.message.reply_text(message, parse_mode="Markdown")
+        
+        elif callback_data == "ai_cancel":
+            # Cancel a pending action in Cursor
+            self.sentinel.log_command(user_id, "/ai cancel (button)")
+            
+            result = agent.cancel_action()
+            
+            if result.success:
+                message = f"🚫 **Action Cancelled!**\n\n{result.message}\n\n_Pressed Escape in Cursor to cancel._"
+            else:
+                message = f"❌ **Failed to cancel:** {result.error or result.message}"
+            
+            try:
+                await query.edit_message_text(message, parse_mode="Markdown")
+            except Exception:
+                await query.message.reply_text(message, parse_mode="Markdown")
+        
+        elif callback_data == "ai_send_continue":
+            # Send "continue" to the AI to keep it going
+            self.sentinel.log_command(user_id, "/ai continue (button)")
+            
+            result = agent.send_continue()
+            
+            if result.success:
+                message = f"➡️ **Continue Sent!**\n\n{result.message}\n\n_The AI should continue its work._"
+            else:
+                message = f"❌ **Failed to continue:** {result.error or result.message}"
+            
+            try:
+                await query.edit_message_text(message, parse_mode="Markdown")
+            except Exception:
+                await query.message.reply_text(message, parse_mode="Markdown")
+    
+    # ==========================================
+    # Cursor Control Callbacks
+    # ==========================================
+    
+    @require_auth
+    async def _cmd_cursor_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle Cursor control button callbacks (open, status, etc.)."""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = update.effective_user.id
+        callback_data = query.data
+        
+        agent = self._get_cursor_agent()
+        
+        if callback_data == "cursor_open":
+            # Open Cursor for the current workspace with live status updates
+            self.sentinel.log_command(user_id, "cursor open (button)")
+            
+            workspace_name = self.cli.current_dir.name
+            
+            # Send initial pending message
+            pending_msg = await query.message.reply_text(
+                f"🚀 **Opening Cursor...**\n\n"
+                f"📂 Workspace: `{workspace_name}`\n"
+                f"⏳ Status: Launching...",
+                parse_mode="Markdown"
+            )
+            
+            # Create a callback to update the message
+            last_message = {"text": ""}  # Use dict to allow mutation in closure
+            
+            async def status_callback(message: str, is_complete: bool):
+                """Update the Telegram message with current status."""
+                # Only update if message changed (to avoid rate limiting)
+                if message != last_message["text"]:
+                    last_message["text"] = message
+                    try:
+                        if is_complete:
+                            # Add buttons based on final status
+                            if "✅" in message:
+                                # Success - offer to send a prompt
+                                keyboard = [[
+                                    InlineKeyboardButton("🤖 Send AI Prompt", callback_data="ai_prompt_start"),
+                                    InlineKeyboardButton("📊 Check Status", callback_data="cursor_status"),
+                                ]]
+                                reply_markup = InlineKeyboardMarkup(keyboard)
+                            else:
+                                # Error or warning - offer retry
+                                keyboard = [[
+                                    InlineKeyboardButton("🔄 Retry", callback_data="cursor_open"),
+                                    InlineKeyboardButton("📊 Check Status", callback_data="cursor_status"),
+                                ]]
+                                reply_markup = InlineKeyboardMarkup(keyboard)
+                            
+                            await pending_msg.edit_text(
+                                f"💻 **Cursor Status**\n\n{message}",
+                                parse_mode="Markdown",
+                                reply_markup=reply_markup
+                            )
+                        else:
+                            # In progress - show animated status
+                            await pending_msg.edit_text(
+                                f"💻 **Opening Cursor**\n\n"
+                                f"📂 Workspace: `{workspace_name}`\n"
+                                f"{message}",
+                                parse_mode="Markdown"
+                            )
+                    except Exception as e:
+                        logger.debug(f"Failed to update status message: {e}")
+            
+            # Open Cursor and wait for it to be ready
+            result = await agent.open_cursor_and_wait(
+                status_callback=status_callback,
+                timeout=30.0,
+                poll_interval=1.5
+            )
+            
+            # Log result
+            if result.success:
+                logger.info(f"Cursor opened successfully for {workspace_name}")
+            else:
+                logger.warning(f"Cursor open failed: {result.message}")
+        
+        elif callback_data == "cursor_status":
+            # Check Cursor status
+            self.sentinel.log_command(user_id, "cursor status (button)")
+            
+            status = agent.check_cursor_status()
+            
+            status_emoji = {
+                "not_running": "🔴 Not Running",
+                "starting": "🟡 Starting...",
+                "running": "🟠 Running (different workspace)",
+                "ready": "🟢 Ready",
+            }
+            
+            status_text = status_emoji.get(status.get("status", ""), "⚪ Unknown")
+            message = status.get("message", "Unable to determine status")
+            
+            response = f"💻 **Cursor Status**\n\n{status_text}\n\n{message}"
+            
+            # Add action buttons based on status
+            if not status.get("workspace_open"):
+                keyboard = [[InlineKeyboardButton("🚀 Open in Cursor", callback_data="cursor_open")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.message.reply_text(response, parse_mode="Markdown", reply_markup=reply_markup)
+            else:
+                keyboard = [[InlineKeyboardButton("🤖 Send AI Prompt", callback_data="ai_prompt_start")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.message.reply_text(response, parse_mode="Markdown", reply_markup=reply_markup)
+        
+        elif callback_data == "ai_prompt_start":
+            # Prompt user to send an AI message
+            self.sentinel.log_command(user_id, "ai prompt start (button)")
+            
+            await query.message.reply_text(
+                "🤖 **Ready for AI Prompt**\n\n"
+                "Send your coding request as a message.\n\n"
+                "_Example: \"Create a login form with validation\"_\n\n"
+                "Or use: `/ai <your prompt>`",
                 parse_mode="Markdown"
             )
     
@@ -1673,6 +2449,9 @@ Working directory is now clean."""
         try:
             from .tray_icon import start_tray, get_tray
             self.tray = start_tray(
+                on_settings=self._on_tray_settings,
+                on_quick_lock=self._on_tray_quick_lock,
+                on_secure_lock=self._on_tray_secure_lock,
                 on_stop=self._request_stop
             )
             if self.tray:
@@ -1708,6 +2487,88 @@ Working directory is now clean."""
         """Update the tray icon with the last command."""
         if self.tray:
             self.tray.update_last_command(command)
+    
+    def _on_tray_settings(self):
+        """Handle Settings click from tray icon."""
+        logger.info("Settings requested from system tray")
+        try:
+            # Open the config GUI
+            import subprocess
+            project_root = Path(__file__).parent.parent
+            subprocess.Popen(
+                [sys.executable, "main.py", "--config"],
+                cwd=str(project_root)
+            )
+        except Exception as e:
+            logger.error(f"Failed to open settings: {e}")
+    
+    def _on_tray_quick_lock(self):
+        """Handle Quick Lock click from tray icon (Windows only)."""
+        logger.info("Quick Lock requested from system tray")
+        self._run_elevated_lock(secure_mode=False)
+    
+    def _on_tray_secure_lock(self):
+        """Handle Secure Lock click from tray icon (Windows only)."""
+        logger.info("Secure Lock requested from system tray")
+        self._run_elevated_lock(secure_mode=True)
+    
+    def _run_elevated_lock(self, secure_mode: bool = False):
+        """
+        Run TSCON lock with UAC elevation prompt.
+        
+        Uses ShellExecuteW with 'runas' verb to request elevation.
+        """
+        if sys.platform != "win32":
+            logger.warning("TSCON lock is only available on Windows")
+            return
+        
+        try:
+            import ctypes
+            
+            project_root = Path(__file__).parent.parent
+            
+            # Try BAT file first
+            if secure_mode:
+                script_path = project_root / "tscon_secure_lock.bat"
+            else:
+                script_path = project_root / "tscon_lock.bat"
+            
+            if script_path.exists():
+                # Run the BAT file with elevation
+                result = ctypes.windll.shell32.ShellExecuteW(
+                    None,          # hwnd
+                    "runas",       # verb (run as admin)
+                    str(script_path),  # file
+                    None,          # parameters
+                    str(project_root),  # directory
+                    1              # show command (SW_SHOWNORMAL)
+                )
+                
+                if result <= 32:
+                    logger.error(f"ShellExecute failed with code {result}")
+            else:
+                # Fallback: run tscon_helper.py directly with elevation
+                python_exe = sys.executable
+                tscon_module = project_root / "src" / "tscon_helper.py"
+                
+                params = f'"{tscon_module}" --lock'
+                if secure_mode:
+                    params += " --secure"
+                
+                result = ctypes.windll.shell32.ShellExecuteW(
+                    None,
+                    "runas",
+                    python_exe,
+                    params,
+                    str(project_root),
+                    1
+                )
+                
+                if result <= 32:
+                    logger.error(f"ShellExecute failed with code {result}")
+                    
+        except Exception as e:
+            logger.error(f"Elevated lock failed: {e}")
     
     async def stop(self):
         """Stop the bot gracefully."""

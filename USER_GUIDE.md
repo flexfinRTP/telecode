@@ -151,7 +151,7 @@ Bot: 🎉 Project Created Successfully!
      • Start coding in Cursor
      • Use /ai to run prompts
      • Use /status to check git
-     • Use /accept to commit changes
+     • Use /commit to commit changes
 ```
 
 ### Project Naming Rules
@@ -206,7 +206,7 @@ Bot: 📝 Changes Summary
 ### Committing Changes
 
 ```
-You: /accept Fixed login bug
+You: /commit Fixed login bug
 
 Bot: ✅ Changes Committed!
      📝 Message: Fixed login bug
@@ -268,7 +268,7 @@ Bot: 🤖 Executing AI prompt...
      src/auth/login.py | 25 +++++++++++++++++++++++++
      1 file changed, 25 insertions(+)
      
-     Use /accept to commit or /revert to undo
+     Use /commit to commit or /revert to undo
 ```
 
 ### Direct Text Prompts
@@ -282,29 +282,81 @@ Bot: 🤖 Executing AI prompt...
      [continues as above]
 ```
 
-### Review Before Accepting - Cursor-Style Action Buttons
+### Review Before Accepting - Cursor Control Buttons
 
-After every AI execution, you'll see a **changes preview** with inline action buttons:
+After every AI execution, you'll see **Cursor control buttons** (these do NOT touch git):
 
 ```
-Bot: ✅ AI Execution Complete!
+Bot: ✅ Prompt Sent to Cursor!
 
-     📊 Changes Preview:
-     src/auth/login.py | 25 +++++++++++++
-     src/utils/jwt.py  | 10 ++++++
-     2 files changed, 35 insertions(+)
+     🤖 Agent mode - Files auto-save (won't lose work)
      
-     [📖 View Full Diff]
-     [✅ Keep All] [🗑️ Undo All]
-     [▶️ Continue]
+     📝 Prompt: Create a login form with validation
+     
+     ⏳ AI is now processing...
+     
+     [📊 Check] [📖 Diff] [✅ Accept]
+     [▶️ Run] [🌐 Search] [🚫 Cancel]
+     [➡️ Continue] [❌ Reject]
+     [⚙️ Mode] [🧹 Cleanup]
 ```
 
-| Button | Action | Equivalent Command |
-|--------|--------|-------------------|
-| 📖 View Full Diff | Shows complete diff inline | `/diff full` |
-| ✅ Keep All | Commits all changes | `/accept` |
-| 🗑️ Undo All | Discards all changes (with confirmation) | `/revert CONFIRM` |
-| ▶️ Continue | Prompts for follow-up AI command | Send next message |
+### Cursor Buttons (AI control - no git!)
+
+| Button | Action | What It Does |
+|--------|--------|--------------|
+| 📊 Check | See files modified | Read-only view of changes |
+| 📖 Diff | Shows diff | Read-only diff view |
+| ✅ Accept | Apply in Cursor | Uses Cursor automation to accept |
+| ▶️ Run | **Approve command** | When AI wants to run a script, approve it |
+| 🌐 Search | **Approve web search** | When AI wants to search the web, approve it |
+| 🚫 Cancel | **Cancel action** | Cancel any pending AI action (Escape) |
+| ➡️ Continue | **Continue AI** | Send "continue" to keep AI working |
+| ❌ Reject | Discard in Cursor | Uses Escape or Ctrl+Z |
+| ⚙️ Mode | Change prompt mode | Switch between Agent/Chat |
+| 🧹 Cleanup | Close old agents | Closes oldest agent tabs when >5 |
+
+### Approving AI Actions
+
+When Cursor's AI wants to run a terminal command or search the web, it asks for permission. Use these buttons:
+
+```
+Bot: ⚠️ Cursor wants to run a command
+     
+     The AI is requesting to execute a terminal command.
+     
+     Do you want to approve this?
+     
+     [✅ Yes, Run It] [🚫 Cancel]
+
+You: [clicks Yes, Run It]
+
+Bot: ✅ Command Approved!
+     The AI will now execute the command.
+```
+
+**Same for web search:**
+```
+Bot: 🌐 Cursor wants to search the web
+     
+     [🌐 Yes, Search] [🚫 Cancel]
+```
+
+### Cursor vs Git - Clear Separation
+
+**Important:** AI buttons control **Cursor only**, git is **separate**!
+
+| What You Want | Cursor (buttons) | Git (commands) |
+|---------------|------------------|----------------|
+| Apply changes | ✅ Accept | `/commit` |
+| Discard changes | ❌ Reject | `/revert CONFIRM` |
+| View changes | 📊 Check, 📖 Diff | `/status`, `/diff` |
+| Save to repo | _(n/a)_ | `/commit` + `/push` |
+
+**Workflow:**
+1. Use **Accept** to apply AI changes in Cursor
+2. Use `/commit` to git commit when ready
+3. Use `/push` to push to remote
 
 ### Two-Step Undo Confirmation
 
@@ -327,8 +379,63 @@ You can also use text commands:
 1. **Run AI prompt**: `/ai [your request]`
 2. **Review changes**: `/diff`
 3. **Accept or reject**:
-   - `/accept [message]` - Commit with custom message
+   - `/commit [message]` - Commit with custom message
    - `/revert CONFIRM` - Discard all changes
+
+---
+
+## ⚙️ Prompt Modes
+
+TeleCode supports two prompt modes that control how AI changes are handled:
+
+### Agent Mode (Default - SAFEST)
+
+```
+You: /ai mode agent
+Bot: ✅ Mode Changed! 🤖 Agent mode - Auto-saves files
+     💡 Files auto-save, Reject uses Ctrl+Z
+```
+
+- Uses **Ctrl+Shift+I** to open a new Agent in Cursor
+- **Files are saved immediately** to disk
+- You **won't lose work** even if you forget to click Accept
+- **Reject** uses Ctrl+Z to undo changes
+
+### Chat Mode
+
+```
+You: /ai mode chat
+Bot: ✅ Mode Changed! 💬 Chat mode
+     ⚠️ Click Accept to apply, Reject uses Escape
+```
+
+- Uses **Ctrl+L** to open Chat panel in Cursor
+- Changes are **proposed but not saved** until you click Accept
+- More **control over what gets applied**
+- **Reject** uses Escape to discard proposed changes
+
+### Quick Mode Switch
+
+```
+/ai mode agent  - Switch to Agent mode (auto-save)
+/ai mode chat   - Switch to Chat mode (manual accept)
+/ai mode        - Show mode menu with buttons
+```
+
+### Mode Comparison
+
+| Feature | 🤖 Agent Mode | 💬 Chat Mode |
+|---------|---------------|--------------|
+| Shortcut | Ctrl+Shift+I | Ctrl+L |
+| Auto-saves | ✅ Yes | ❌ No |
+| Risk of losing work | Low | Higher |
+| Control | Less (auto-applies) | More (review first) |
+| Reject method | Ctrl+Z | Escape |
+| Best for | Quick tasks, safety | Careful review |
+
+### Remember: No Git!
+
+All these mode buttons only affect **Cursor**, not git. For git operations, use the separate commands (`/commit`, `/revert`, `/push`, etc.).
 
 ---
 
@@ -496,6 +603,38 @@ Bot: ✅ Changed directory to: C:\Users\Dev\Projects\myproject\src
      📂 Current: src
      📍 Path: C:\Users\Dev\Projects\myproject\src
      🔀 Git: ## main
+     
+     💻 Cursor: 🔴 Not Running
+     
+     [🚀 Open in Cursor]
+```
+
+**Smart Cursor Detection:** TeleCode now checks if Cursor is open when you change directories. Click the button to launch Cursor with live status updates!
+
+### Opening Cursor from Telegram
+
+```
+You: /cursor
+
+Bot: 💻 Cursor IDE Status
+
+     Workspace: src
+     Status: 🔴 Not Running
+     
+     Cursor is not running
+     
+     [🚀 Open in Cursor]
+
+You: [clicks button]
+
+Bot: 💻 Opening Cursor
+     📂 Workspace: src
+     ⏳ Launching... (3s)...
+
+Bot: 💻 Cursor Status
+     ✅ Cursor ready with src
+     
+     [🤖 Send AI Prompt] [🔄 Refresh Status]
 ```
 
 ### Reading Files
@@ -559,10 +698,10 @@ Bot: ## main
 
 ### 2. Commit with Default Message
 
-Just type `/accept` without a message:
+Just type `/commit` without a message:
 
 ```
-You: /accept
+You: /commit
 
 Bot: ✅ Changes Committed!
      📝 Message: TeleCode auto-commit: 2026-02-01 14:30
@@ -746,11 +885,12 @@ Bot: ⛔ SECURITY ALERT
 | **New project** | `/create` |
 | Git status | `/status` |
 | View changes | `/diff` |
-| Commit | `/accept [msg]` |
+| Commit | `/commit [msg]` |
 | Push | `/push` |
 | Pull | `/pull` |
 | Undo changes | `/revert CONFIRM` |
 | AI prompt | `/ai [prompt]` |
+| **Open Cursor** | `/cursor` or `/cursor open` 💻 |
 | Change folder | `/cd [path]` |
 | List files | `/ls` |
 | Read file | `/read [file]` |

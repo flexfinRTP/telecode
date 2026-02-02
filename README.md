@@ -229,7 +229,7 @@ TeleCode stores configuration in a `.env` file. You can configure via:
 | `/diff` | Show uncommitted changes |
 | `/push` | Push to remote |
 | `/pull` | Pull from remote |
-| `/accept [msg]` | Commit all changes |
+| `/commit [msg]` | Commit all changes |
 | `/revert` | Discard all changes ⚠️ |
 | `/log` | Show recent commits |
 | `/branch` | List branches |

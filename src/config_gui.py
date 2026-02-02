@@ -558,7 +558,7 @@ class ConfigurationGUI:
             
             tscon_info = tk.Label(
                 tscon_group,
-                text="Lock your screen and code on the go! Your session stays active so you can\ncontrol Cursor via Telegram from anywhere. (Requires Administrator)",
+                text="Lock your screen and code on the go! Your session stays active so you can\ncontrol Cursor via Telegram from anywhere. Use the System Tray icon for quick access!",
                 font=("Tahoma", 7),
                 fg="#666666",
                 bg=XP_COLORS["bg_groupbox"],
@@ -566,26 +566,17 @@ class ConfigurationGUI:
             )
             tscon_info.pack(anchor="w")
             
-            # ---- Option 1: Create Shortcuts ----
-            shortcut_frame = tk.Frame(tscon_group, bg=XP_COLORS["bg_groupbox"])
-            shortcut_frame.pack(fill="x", pady=(8, 3))
-            
-            create_shortcut_btn = XPStyleButton(
-                shortcut_frame,
-                text="📁 Create Lock Shortcuts",
-                command=self._create_tscon_shortcut
-            )
-            create_shortcut_btn.pack(side="left")
-            
-            tk.Label(
-                shortcut_frame,
-                text="(adds Quick Lock & Secure Lock to Desktop)",
-                font=("Tahoma", 7),
-                fg="#666666",
+            # Note about system tray
+            tray_note = tk.Label(
+                tscon_group,
+                text="💡 TIP: Right-click the TeleCode tray icon (near clock) for Quick Lock & Secure Lock!",
+                font=("Tahoma", 7, "bold"),
+                fg=XP_COLORS["success"],
                 bg=XP_COLORS["bg_groupbox"]
-            ).pack(side="left", padx=(10, 0))
+            )
+            tray_note.pack(anchor="w", pady=(5, 5))
             
-            # ---- Option 2: Quick Lock ----
+            # ---- Quick Lock ----
             quick_frame = tk.Frame(tscon_group, bg=XP_COLORS["bg_groupbox"])
             quick_frame.pack(fill="x", pady=(3, 3))
             
@@ -651,8 +642,28 @@ class ConfigurationGUI:
             if env_path.exists():
                 config = dotenv_values(env_path)
                 
-                if config.get("TELEGRAM_BOT_TOKEN"):
-                    self.token_var.set(config["TELEGRAM_BOT_TOKEN"])
+                # Load token - try vault first if placeholder is in .env
+                token_in_env = config.get("TELEGRAM_BOT_TOKEN", "")
+                if token_in_env == "[STORED_IN_SECURE_VAULT]":
+                    # Token is in vault, try to retrieve it
+                    try:
+                        from .token_vault import get_vault
+                        vault = get_vault()
+                        vault_token = vault.retrieve_token()
+                        if vault_token:
+                            self.token_var.set(vault_token)
+                            self._set_status("🔒 Token loaded from secure vault", "success")
+                        else:
+                            # Vault retrieval failed - show placeholder so user knows to re-enter
+                            self.token_var.set("")
+                            self._set_status("⚠️ Token in vault but couldn't retrieve - please re-enter", "error")
+                    except Exception as e:
+                        logger.warning(f"Could not load token from vault: {e}")
+                        self.token_var.set("")
+                        self._set_status("⚠️ Token vault error - please re-enter token", "error")
+                elif token_in_env:
+                    self.token_var.set(token_in_env)
+                
                 if config.get("ALLOWED_USER_ID"):
                     self.userid_var.set(config["ALLOWED_USER_ID"])
                 if config.get("DEV_ROOT"):
@@ -669,7 +680,8 @@ class ConfigurationGUI:
                     if idx < len(self.model_choices):
                         self.model_var.set(self.model_choices[idx])
                 
-                self._set_status("Loaded existing configuration", "info")
+                if not self.status_var.get().startswith("🔒") and not self.status_var.get().startswith("⚠️"):
+                    self._set_status("Loaded existing configuration", "info")
         except Exception as e:
             logger.warning(f"Could not load existing config: {e}")
     
@@ -946,36 +958,6 @@ DEFAULT_MODEL={selected_model_alias}
             else:
                 self.root.destroy()
     
-    def _create_tscon_shortcut(self):
-        """Create TSCON desktop shortcuts (both standard and secure)."""
-        try:
-            from .tscon_helper import TSCONManager
-            manager = TSCONManager()
-            
-            # Create both shortcuts
-            success1, msg1 = manager.create_shortcut(secure_mode=False)
-            success2, msg2 = manager.create_shortcut(secure_mode=True)
-            
-            if success1 and success2:
-                messagebox.showinfo(
-                    "✅ Shortcuts Created",
-                    f"Created 2 shortcuts on your Desktop:\n\n"
-                    f"📁 TeleCode_QuickLock.bat\n"
-                    f"   Basic lock (remote access stays on)\n\n"
-                    f"📁 TeleCode_SecureLock.bat ⭐ Recommended\n"
-                    f"   Secure lock (blocks remote access + auto-lock)\n\n"
-                    f"To use:\n"
-                    f"1. Right-click the shortcut\n"
-                    f"2. Select 'Run as administrator'\n"
-                    f"3. Your screen will go black\n"
-                    f"4. TeleCode continues working!"
-                )
-                self._set_status("✅ Both TSCON shortcuts created", "success")
-            else:
-                messagebox.showerror("Error", f"Standard: {msg1}\nSecure: {msg2}")
-                self._set_status("❌ Failed to create shortcuts", "error")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to create shortcuts: {e}")
     
     def _show_voice_info(self):
         """Show info about voice transcription."""
@@ -1070,56 +1052,38 @@ DEFAULT_MODEL={selected_model_alias}
         )
     
     def _run_quick_lock(self):
-        """Run Quick Lock (standard TSCON)."""
+        """Run Quick Lock (standard TSCON) - requests UAC elevation if needed."""
         try:
             from .tscon_helper import TSCONManager
             manager = TSCONManager()
-            
-            if not manager.is_admin:
-                messagebox.showwarning(
-                    "⚠️ Administrator Required",
-                    "TSCON requires administrator privileges.\n\n"
-                    "To use Quick Lock:\n"
-                    "1. Click 'Create Desktop Shortcuts'\n"
-                    "2. Right-click TeleCode_QuickLock.bat\n"
-                    "3. Select 'Run as administrator'\n\n"
-                    "The shortcut auto-requests elevation."
-                )
-                return
             
             confirm = messagebox.askyesno(
                 "⚡ Quick Lock",
                 "This will disconnect your display.\n\n"
                 "⚠️ Note: Remote Desktop stays ENABLED.\n"
                 "Someone could still connect to your PC remotely.\n\n"
+                "You will be prompted for Administrator access.\n\n"
                 "Proceed with Quick Lock?",
                 icon="warning"
             )
             
             if confirm:
-                success, message = manager.lock_session()
-                if not success:
-                    messagebox.showerror("Error", message)
+                if manager.is_admin:
+                    # Already admin, run directly
+                    success, message = manager.lock_session()
+                    if not success:
+                        messagebox.showerror("Error", message)
+                else:
+                    # Request UAC elevation
+                    self._run_elevated_lock(secure_mode=False)
         except Exception as e:
             messagebox.showerror("Error", f"Quick Lock failed: {e}")
     
     def _run_secure_lock(self):
-        """Run Secure Lock (TSCON with remote access blocked + timeout)."""
+        """Run Secure Lock (TSCON with remote access blocked + timeout) - requests UAC elevation if needed."""
         try:
             from .tscon_helper import TSCONManager
             manager = TSCONManager()
-            
-            if not manager.is_admin:
-                messagebox.showwarning(
-                    "⚠️ Administrator Required",
-                    "TSCON requires administrator privileges.\n\n"
-                    "To use Secure Lock:\n"
-                    "1. Click 'Create Desktop Shortcuts'\n"
-                    "2. Right-click TeleCode_SecureLock.bat\n"
-                    "3. Select 'Run as administrator'\n\n"
-                    "The shortcut auto-requests elevation."
-                )
-                return
             
             confirm = messagebox.askyesno(
                 "🛡️ Secure Lock",
@@ -1131,16 +1095,81 @@ DEFAULT_MODEL={selected_model_alias}
                 "✓ Remote connections blocked\n"
                 "✓ Physical access required to reconnect\n"
                 "✓ Automatic timeout protection\n\n"
+                "You will be prompted for Administrator access.\n\n"
                 "Proceed with Secure Lock?",
                 icon="warning"
             )
             
             if confirm:
-                success, message = manager.lock_session_secure(watchdog_minutes=30)
-                if not success:
-                    messagebox.showerror("Error", message)
+                if manager.is_admin:
+                    # Already admin, run directly
+                    success, message = manager.lock_session_secure(watchdog_minutes=30)
+                    if not success:
+                        messagebox.showerror("Error", message)
+                else:
+                    # Request UAC elevation
+                    self._run_elevated_lock(secure_mode=True)
         except Exception as e:
             messagebox.showerror("Error", f"Secure Lock failed: {e}")
+    
+    def _run_elevated_lock(self, secure_mode: bool = False):
+        """
+        Run TSCON lock with UAC elevation prompt.
+        
+        Uses ShellExecuteW with 'runas' verb to request elevation.
+        """
+        import ctypes
+        from pathlib import Path
+        
+        if sys.platform != "win32":
+            messagebox.showwarning("Not Available", "This feature is only available on Windows.")
+            return
+        
+        try:
+            # Find the appropriate BAT file
+            project_root = Path(__file__).parent.parent
+            
+            if secure_mode:
+                script_path = project_root / "tscon_secure_lock.bat"
+            else:
+                script_path = project_root / "tscon_lock.bat"
+            
+            if script_path.exists():
+                # Run the BAT file with elevation
+                result = ctypes.windll.shell32.ShellExecuteW(
+                    None,          # hwnd
+                    "runas",       # verb (run as admin)
+                    str(script_path),  # file
+                    None,          # parameters
+                    str(project_root),  # directory
+                    1              # show command (SW_SHOWNORMAL)
+                )
+                
+                if result <= 32:
+                    messagebox.showerror("Error", f"Failed to request administrator access (code: {result})")
+            else:
+                # Fallback: run Python with tscon_helper directly
+                python_exe = sys.executable
+                tscon_module = str(project_root / "src" / "tscon_helper.py")
+                
+                params = f'"{tscon_module}" --lock'
+                if secure_mode:
+                    params += " --secure"
+                
+                result = ctypes.windll.shell32.ShellExecuteW(
+                    None,
+                    "runas",
+                    python_exe,
+                    params,
+                    str(project_root),
+                    1
+                )
+                
+                if result <= 32:
+                    messagebox.showerror("Error", f"Failed to request administrator access (code: {result})")
+                    
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to run elevated lock: {e}")
     
     def _show_tscon_help(self):
         """Show TSCON help dialog."""

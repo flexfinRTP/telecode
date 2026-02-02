@@ -97,7 +97,7 @@ Hello world     → AI prompt!
 | See changes | `/diff` |
 | Push code | `/push` |
 | Pull code | `/pull` |
-| Commit | `/accept Fix bug` |
+| Commit | `/commit Fix bug` |
 | Undo changes | `/revert CONFIRM` ⚠️ |
 | AI prompt | `/ai Refactor login` |
 | Select model | `/model` |
