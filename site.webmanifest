@@ -1,0 +1,24 @@
+{
+  "name": "TeleCode - Voice-to-Code AI Agent",
+  "short_name": "TeleCode",
+  "description": "Control Cursor AI from your phone via Telegram. Voice-to-code that works from anywhere.",
+  "icons": [
+    {
+      "src": "assets/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#2E7D32",
+  "background_color": "#FAFFF8",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "orientation": "portrait-primary"
+}
+

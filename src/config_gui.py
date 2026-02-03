@@ -195,12 +195,13 @@ class ConfigurationGUI:
         y = max(20, (screen_height - window_height) // 2)  # Ensure not off-screen
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
         
-        # Set icon (would be custom in production)
+        # Set window icon
         try:
-            if sys.platform == "win32":
-                self.root.iconbitmap(default="")
-        except:
-            pass
+            icon_path = Path(__file__).parent.parent / "assets" / "icon.ico"
+            if icon_path.exists() and sys.platform == "win32":
+                self.root.iconbitmap(str(icon_path))
+        except Exception as e:
+            logger.debug(f"Could not set window icon: {e}")
     
     def _create_widgets(self):
         """Create all GUI widgets."""
@@ -274,13 +275,40 @@ class ConfigurationGUI:
         canvas.bind_all("<MouseWheel>", on_mousewheel)
         
         # ==========================================
-        # Header
+        # Header with Logo
         # ==========================================
         header_frame = tk.Frame(main_frame, bg=XP_COLORS["bg_main"])
         header_frame.pack(fill="x", pady=(0, 15))
         
+        # Logo and title container
+        logo_title_frame = tk.Frame(header_frame, bg=XP_COLORS["bg_main"])
+        logo_title_frame.pack(fill="x", pady=(0, 5))
+        
+        # Try to load and display logo
+        logo_path = Path(__file__).parent.parent / "assets" / "telecode.png"
+        if logo_path.exists():
+            try:
+                from PIL import Image, ImageTk
+                logo_img = Image.open(logo_path)
+                # Resize logo to fit nicely (max 120px height)
+                logo_img.thumbnail((180, 120), Image.Resampling.LANCZOS)
+                logo_photo = ImageTk.PhotoImage(logo_img)
+                logo_label = tk.Label(
+                    logo_title_frame,
+                    image=logo_photo,
+                    bg=XP_COLORS["bg_main"]
+                )
+                logo_label.image = logo_photo  # Keep a reference
+                logo_label.pack(side="left", padx=(0, 15))
+            except Exception as e:
+                logger.debug(f"Could not load logo: {e}")
+        
+        # Title and subtitle in a frame
+        title_frame = tk.Frame(logo_title_frame, bg=XP_COLORS["bg_main"])
+        title_frame.pack(side="left", fill="x", expand=True)
+        
         title_label = tk.Label(
-            header_frame,
+            title_frame,
             text="🚀 TeleCode Configuration",
             font=("Tahoma", 14, "bold"),
             bg=XP_COLORS["bg_main"],
@@ -289,7 +317,7 @@ class ConfigurationGUI:
         title_label.pack(anchor="w")
         
         subtitle_label = tk.Label(
-            header_frame,
+            title_frame,
             text="Configure your secure Telegram-to-Terminal bridge",
             font=("Tahoma", 8),
             bg=XP_COLORS["bg_main"],
@@ -402,15 +430,50 @@ class ConfigurationGUI:
         )
         bad_label.pack(anchor="w", pady=(0, 5))
         
-        path_frame = tk.Frame(sandbox_group, bg="#FFF8DC")
-        path_frame.pack(fill="x", pady=(5, 0))
+        # Multi-sandbox list with scrollable frame
+        sandbox_list_frame = tk.Frame(sandbox_group, bg="#FFF8DC")
+        sandbox_list_frame.pack(fill="both", expand=True, pady=(5, 5))
         
-        self.path_var = tk.StringVar()
-        self.path_entry = XPStyleEntry(path_frame, textvariable=self.path_var, width=45)
-        self.path_entry.pack(side="left", fill="x", expand=True)
+        # Scrollable canvas for sandbox list
+        canvas = tk.Canvas(sandbox_list_frame, bg="#FFF8DC", highlightthickness=0, height=150)
+        scrollbar = tk.Scrollbar(sandbox_list_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg="#FFF8DC")
         
-        browse_btn = XPStyleButton(path_frame, text="Browse...", command=self._browse_folder)
-        browse_btn.pack(side="right", padx=(5, 0))
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        self.sandbox_list_frame = scrollable_frame
+        self.sandbox_canvas = canvas
+        self.sandbox_vars = []  # List of StringVar for each sandbox
+        
+        # Add button
+        add_btn_frame = tk.Frame(sandbox_group, bg="#FFF8DC")
+        add_btn_frame.pack(fill="x", pady=(5, 0))
+        
+        add_btn = XPStyleButton(
+            add_btn_frame,
+            text="➕ Add Sandbox Directory",
+            command=self._add_sandbox_folder
+        )
+        add_btn.pack(side="left")
+        
+        # Info label
+        info_label = tk.Label(
+            add_btn_frame,
+            text="(Up to 10 directories allowed)",
+            font=("Tahoma", 7),
+            fg="#666666",
+            bg="#FFF8DC"
+        )
+        info_label.pack(side="left", padx=(10, 0))
         
         # ==========================================
         # AI Model Selection Group
@@ -755,8 +818,16 @@ class ConfigurationGUI:
         """Load existing configuration from .env if present."""
         try:
             from dotenv import dotenv_values
+            from src.system_utils import get_user_data_dir
             
-            env_path = Path(".env")
+            # Check user data directory first (for installed applications)
+            user_data_dir = get_user_data_dir()
+            env_path = user_data_dir / ".env"
+            
+            # Fallback to current directory (for development)
+            if not env_path.exists():
+                env_path = Path(".env")
+            
             if env_path.exists():
                 config = dotenv_values(env_path)
                 
@@ -784,8 +855,18 @@ class ConfigurationGUI:
                 
                 if config.get("ALLOWED_USER_ID"):
                     self.userid_var.set(config["ALLOWED_USER_ID"])
-                if config.get("DEV_ROOT"):
-                    self.path_var.set(config["DEV_ROOT"])
+                
+                # Load sandboxes from config (multi-sandbox support)
+                from src.sandbox_config import get_sandbox_config
+                sandbox_config = get_sandbox_config()
+                
+                if sandbox_config.sandboxes:
+                    # Load from sandbox config
+                    for sandbox_path in sandbox_config.sandboxes:
+                        self._add_sandbox_to_ui(sandbox_path)
+                elif config.get("DEV_ROOT"):
+                    # Backward compatibility: load single DEV_ROOT
+                    self._add_sandbox_to_ui(config["DEV_ROOT"])
                 
                 self.voice_var.set(config.get("ENABLE_VOICE", "true").lower() == "true")
                 self.sleep_var.set(config.get("PREVENT_SLEEP", "true").lower() == "true")
@@ -812,47 +893,6 @@ class ConfigurationGUI:
         }
         self.status_label.configure(fg=colors.get(level, colors["info"]))
         self.status_var.set(message)
-    
-    def _browse_folder(self):
-        """Open folder browser dialog with security warnings."""
-        folder = filedialog.askdirectory(
-            title="⚠️ SELECT YOUR ALLOWED FOLDER - TeleCode Will Have Full Access!",
-            initialdir=self.path_var.get() or str(Path.home())
-        )
-        if folder:
-            # Check for dangerous folder selections
-            danger_result = self._check_dangerous_folder(folder)
-            if danger_result:
-                messagebox.showerror(
-                    "🚫 DANGEROUS FOLDER BLOCKED",
-                    f"You cannot select this folder:\n\n"
-                    f"📁 {folder}\n\n"
-                    f"Reason: {danger_result}\n\n"
-                    f"Please select a dedicated development folder instead.\n"
-                    f"Example: C:\\Dev\\Projects or ~/code"
-                )
-                return
-            
-            # Show confirmation for any folder
-            confirm = messagebox.askyesno(
-                "⚠️ CONFIRM FOLDER ACCESS",
-                f"You are granting TeleCode FULL ACCESS to:\n\n"
-                f"📁 {folder}\n\n"
-                f"TeleCode will be able to:\n"
-                f"  • READ all files in this folder\n"
-                f"  • WRITE and MODIFY files\n"
-                f"  • DELETE files (via git commands)\n"
-                f"  • Execute Cursor AI on these files\n\n"
-                f"Are you SURE this is the correct folder?\n\n"
-                f"Only click 'Yes' if this is a dedicated development folder.",
-                icon="warning"
-            )
-            
-            if confirm:
-                self.path_var.set(folder)
-                self._set_status(f"✅ Folder selected: {Path(folder).name}", "success")
-            else:
-                self._set_status("Folder selection cancelled", "info")
     
     def _check_dangerous_folder(self, folder: str) -> str:
         """
@@ -908,6 +948,90 @@ class ConfigurationGUI:
         
         return ""  # Safe
     
+    def _add_sandbox_folder(self):
+        """Open folder dialog to add a new sandbox directory."""
+        folder = filedialog.askdirectory(
+            title="Select Sandbox Directory",
+            mustexist=True
+        )
+        
+        if folder:
+            folder_path = Path(folder).resolve()
+            folder_str = str(folder_path)
+            
+            # Check if already in list
+            existing_paths = [var.get().strip() for var in self.sandbox_vars]
+            if folder_str in existing_paths:
+                messagebox.showwarning(
+                    "Already Added",
+                    f"This directory is already in the sandbox list:\n{folder_str}"
+                )
+                return
+            
+            # Check limit
+            if len(self.sandbox_vars) >= 10:
+                messagebox.showwarning(
+                    "Limit Reached",
+                    "Maximum 10 sandbox directories allowed."
+                )
+                return
+            
+            # Check if dangerous
+            danger_msg = self._check_dangerous_folder(folder_str)
+            if danger_msg:
+                messagebox.showwarning("⚠️ Dangerous Folder", danger_msg)
+                return
+            
+            # Add to UI
+            self._add_sandbox_to_ui(folder_str)
+            self._set_status(f"✅ Added sandbox: {folder_path.name}", "success")
+    
+    def _add_sandbox_to_ui(self, path: str):
+        """Add a sandbox path to the UI list."""
+        # Create entry frame
+        entry_frame = tk.Frame(self.sandbox_list_frame, bg="#FFF8DC")
+        entry_frame.pack(fill="x", padx=5, pady=2)
+        
+        # Create StringVar for this sandbox
+        var = tk.StringVar(value=path)
+        self.sandbox_vars.append(var)
+        
+        # Entry field
+        entry = tk.Entry(
+            entry_frame,
+            textvariable=var,
+            font=("Tahoma", 8),
+            bg="white",
+            relief="sunken",
+            bd=1
+        )
+        entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        # Remove button
+        remove_btn = XPStyleButton(
+            entry_frame,
+            text="✖",
+            command=lambda: self._remove_sandbox_from_ui(entry_frame, var),
+            width=3
+        )
+        remove_btn.pack(side="right")
+        
+        # Update canvas scroll region
+        self.sandbox_list_frame.update_idletasks()
+        self.sandbox_canvas.configure(scrollregion=self.sandbox_canvas.bbox("all"))
+    
+    def _remove_sandbox_from_ui(self, frame: tk.Frame, var: tk.StringVar):
+        """Remove a sandbox entry from the UI."""
+        if var in self.sandbox_vars:
+            self.sandbox_vars.remove(var)
+        frame.destroy()
+        
+        # Update canvas scroll region
+        self.sandbox_list_frame.update_idletasks()
+        self.sandbox_canvas.configure(scrollregion=self.sandbox_canvas.bbox("all"))
+        
+        self._set_status("Removed sandbox directory", "info")
+    
     def _toggle_token_visibility(self):
         """Toggle bot token visibility (show/hide)."""
         self.token_visible = not self.token_visible
@@ -932,7 +1056,6 @@ class ConfigurationGUI:
         """Validate the configuration values."""
         token = self.token_var.get().strip()
         userid = self.userid_var.get().strip()
-        path = self.path_var.get().strip()
         
         if not token:
             self._set_status("❌ Bot Token is required", "error")
@@ -956,26 +1079,34 @@ class ConfigurationGUI:
             self._set_status("❌ User ID must be a number", "error")
             return False
         
-        if not path:
-            self._set_status("❌ Development Root folder is required", "error")
+        # Validate sandboxes
+        if not self.sandbox_vars:
+            self._set_status("❌ At least one sandbox directory is required", "error")
             return False
         
-        if not Path(path).exists():
-            self._set_status("❌ Selected folder does not exist", "error")
-            return False
-        
-        # Check for dangerous folder selections
-        danger_result = self._check_dangerous_folder(path)
-        if danger_result:
-            self._set_status(f"❌ Unsafe folder: {danger_result}", "error")
-            messagebox.showerror(
-                "🚫 DANGEROUS FOLDER",
-                f"Cannot use this folder:\n\n"
-                f"📁 {path}\n\n"
-                f"Reason: {danger_result}\n\n"
-                f"Please select a dedicated development folder."
-            )
-            return False
+        # Check each sandbox
+        for var in self.sandbox_vars:
+            path = var.get().strip()
+            if not path:
+                self._set_status("❌ All sandbox directories must be set", "error")
+                return False
+            
+            if not Path(path).exists():
+                self._set_status(f"❌ Directory does not exist: {path}", "error")
+                return False
+            
+            # Check for dangerous folder selections
+            danger_result = self._check_dangerous_folder(path)
+            if danger_result:
+                self._set_status(f"❌ Unsafe folder: {danger_result}", "error")
+                messagebox.showerror(
+                    "🚫 DANGEROUS FOLDER",
+                    f"Cannot use this folder:\n\n"
+                    f"📁 {path}\n\n"
+                    f"Reason: {danger_result}\n\n"
+                    f"Please select a dedicated development folder."
+                )
+                return False
         
         return True
     
@@ -1013,14 +1144,60 @@ class ConfigurationGUI:
                 if idx < len(self.model_aliases):
                     selected_model_alias = self.model_aliases[idx]
             
+            # Collect sandbox directories
+            sandbox_paths = []
+            for var in self.sandbox_vars:
+                path = var.get().strip()
+                if path:
+                    try:
+                        # Validate path exists
+                        path_obj = Path(path).resolve()
+                        if path_obj.exists() and path_obj.is_dir():
+                            sandbox_paths.append(str(path_obj))
+                        else:
+                            self._set_status(f"⚠️ Warning: Directory does not exist: {path}", "error")
+                    except Exception as e:
+                        self._set_status(f"⚠️ Warning: Invalid path: {path} - {e}", "error")
+            
+            if not sandbox_paths:
+                messagebox.showerror(
+                    "No Sandboxes",
+                    "Please add at least one sandbox directory."
+                )
+                return False
+            
+            # Save sandbox configuration
+            from src.sandbox_config import get_sandbox_config
+            sandbox_config = get_sandbox_config()
+            
+            # Clear existing and add new ones
+            sandbox_config.sandboxes = []
+            for path in sandbox_paths:
+                success, msg = sandbox_config.add_sandbox(path)
+                if not success:
+                    self._set_status(f"⚠️ Failed to add sandbox: {msg}", "error")
+            
+            # Set first as current if none set
+            if sandbox_config.current_index >= len(sandbox_config.sandboxes):
+                sandbox_config.current_index = 0
+            
+            if not sandbox_config.save():
+                messagebox.showerror("Error", "Failed to save sandbox configuration")
+                return False
+            
+            # Get current sandbox for DEV_ROOT (backward compatibility)
+            current_sandbox = sandbox_config.get_current() or sandbox_paths[0]
+            
             # Write .env with other settings (token may be in vault)
             env_content = f"""# TeleCode Configuration
 # Generated by TeleCode Setup GUI
 # SECURITY: Token may be stored in encrypted vault (check .telecode_vault)
+# NOTE: Multiple sandboxes are stored in sandboxes.json
+# DEV_ROOT here is the current active sandbox (for backward compatibility)
 
 TELEGRAM_BOT_TOKEN={token_for_env}
 ALLOWED_USER_ID={self.userid_var.get().strip()}
-DEV_ROOT={self.path_var.get().strip()}
+DEV_ROOT={current_sandbox}
 ENABLE_VOICE={str(self.voice_var.get()).lower()}
 PREVENT_SLEEP={str(self.sleep_var.get()).lower()}
 ENABLE_AUDIT_LOG={str(self.audit_var.get()).lower()}
@@ -1029,7 +1206,11 @@ ENABLE_AUDIT_LOG={str(self.audit_var.get()).lower()}
 DEFAULT_MODEL={selected_model_alias}
 """
             
-            env_path = Path(".env")
+            # Save .env to user data directory (works when installed in Program Files)
+            from src.system_utils import get_user_data_dir
+            user_data_dir = get_user_data_dir()
+            env_path = user_data_dir / ".env"
+            
             with open(env_path, "w", encoding="utf-8") as f:
                 f.write(env_content)
             
@@ -1041,7 +1222,7 @@ DEFAULT_MODEL={selected_model_alias}
             except Exception:
                 pass
             
-            self._set_status("✅ Configuration saved securely!", "success")
+            self._set_status(f"✅ Configuration saved! {len(sandbox_paths)} sandbox(es) configured.", "success")
             return True
             
         except Exception as e:
@@ -1346,7 +1527,23 @@ need Remote Desktop access while away.
     
     def run(self):
         """Start the GUI event loop."""
-        self.root.mainloop()
+        try:
+            # Bring window to front and focus
+            self.root.lift()
+            self.root.attributes('-topmost', True)
+            self.root.after_idle(lambda: self.root.attributes('-topmost', False))
+            self.root.focus_force()
+            
+            # Start main loop
+            self.root.mainloop()
+        except Exception as e:
+            logger.error(f"GUI error: {e}", exc_info=True)
+            # Try to show error in messagebox if possible
+            try:
+                messagebox.showerror("TeleCode Error", f"Failed to start configuration GUI:\n\n{e}")
+            except:
+                pass
+            raise
 
 
 def show_config_gui(on_save_callback: Optional[Callable] = None):
@@ -1356,8 +1553,18 @@ def show_config_gui(on_save_callback: Optional[Callable] = None):
     Args:
         on_save_callback: Function to call when config is saved
     """
-    gui = ConfigurationGUI(on_save_callback)
-    gui.run()
+    try:
+        gui = ConfigurationGUI(on_save_callback)
+        gui.run()
+    except Exception as e:
+        logger.error(f"Failed to show config GUI: {e}", exc_info=True)
+        # Try to show error dialog
+        try:
+            import tkinter.messagebox as mb
+            mb.showerror("TeleCode Error", f"Failed to open configuration:\n\n{e}\n\nPlease check the logs for details.")
+        except:
+            pass
+        raise
 
 
 if __name__ == "__main__":

@@ -10,6 +10,255 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.18] - 2026-02-02
+
+### 🔧 Fixed
+
+#### Conversation Handler State Management
+- **Issue**: Multi-step commands (`/commit` and `/create`) would become unresponsive if called again after being interrupted (e.g., when user interacts with Cursor AI while waiting for input)
+- **Root Cause**: Conversation handlers remained in their waiting states, preventing commands from being recognized as new entry points when called again
+- **Fix Applied to Both Commands**:
+  - **`/commit` command**: 
+    - Added `/commit` command handler to `COMMIT_AWAITING_MESSAGE` state to allow restarting
+    - Added `/commit` to fallback handlers for additional restart capability
+    - Ensured `_cmd_commit` properly returns `ConversationHandler.END` when commit message is provided directly (immediate commit)
+  - **`/create` command**:
+    - Added `/create` command handler to both `CREATE_AWAITING_NAME` and `CREATE_AWAITING_CONFIRM` states
+    - Added `/create` to fallback handlers
+    - Added state cleanup in `_cmd_create_start` to clear any existing project name when restarting
+- **Impact**: Users can now call `/commit` or `/create` again after interruption, and conversations will restart cleanly
+- **Behavior**: 
+  - When `/commit` is called while already in commit conversation state, it restarts the prompt flow (shows file list and asks for message again)
+  - When `/create` is called while already in create conversation state, it restarts from the beginning (asks for project name again)
+
+---
+
+## [0.1.17] - 2026-02-02
+
+### ✨ Added
+- **Interactive Commit Message Prompt**: The `/commit` command now prompts users for a commit message when no message is provided
+  - When `/commit` is used without arguments, the bot asks the user to enter a commit message
+  - **Shows list of changed files** in the prompt to help users remember what they're committing
+  - Displays up to 20 files with numbered list format
+  - User's message is automatically combined with timestamp format: `"User message - TeleCode: YYYY-MM-DD HH:MM"`
+  - Users can still provide a message directly: `/commit Fix bug` (timestamp still added)
+  - Users can cancel the commit operation with `/cancel`
+  - Improves commit message quality by encouraging descriptive messages
+
+### Changed
+- **Commit Message Format**: Commit messages now always include timestamp suffix
+  - Format: `"User message - TeleCode: YYYY-MM-DD HH:MM"`
+  - Timestamp is automatically appended to both direct and prompted commit messages
+  - Maintains consistency with previous auto-commit format
+
+---
+
+## [0.1.16] - 2026-02-03
+
+### 🔧 Fixed TSCON Path Detection and Session Handling
+
+### Fixed
+- **Enhanced TSCON Path Detection**: Added multiple path checks and diagnostics
+  - Now checks `Sysnative`, `System32`, and `%windir%\System32` paths
+  - Uses `where` command as fallback to locate tscon.exe
+  - Provides detailed diagnostic information when tscon.exe is not found
+  - Detects Windows edition to provide edition-specific error messages
+- **Windows Home Edition Detection**: Improved error messages for Windows Home users
+  - Clearly explains that TSCON is not available on Windows Home edition
+  - Provides guidance on upgrading to Windows Pro if needed
+  - Shows OS name and checked paths in diagnostic output
+- **TSCON.exe Not Found Error**: Fixed "'tscon.exe' is not recognized" error on Windows
+  - Added robust path detection that handles 32-bit/64-bit Windows correctly
+  - Uses `Sysnative` path for 32-bit processes on 64-bit Windows (avoids System32 redirection)
+  - Verifies tscon.exe exists before attempting to run it
+  - Provides clear error messages when tscon.exe is missing
+- **Session Detection**: Improved session ID detection for TSCON commands
+  - Now queries active sessions using `query session` command before calling tscon
+  - Falls back to SESSIONNAME environment variable if query fails
+  - Defaults to "console" as last resort
+  - Provides diagnostic information showing current sessions on failure
+- **Error Diagnostics**: Enhanced error messages with comprehensive diagnostics
+  - Shows TSCON path, session ID, and current sessions on failure
+  - Better guidance for troubleshooting (RDP, Windows Home, permissions)
+  - All batch files now provide consistent error reporting
+
+### Changed
+- **Batch Files**: Updated all TSCON batch files with improved path detection
+  - `tscon_secure_lock.bat`: Now handles 32-bit/64-bit Windows correctly
+  - `tscon_lock.bat`: Added session querying and better error handling
+  - `tscon_lock_verbose.bat`: Enhanced diagnostics and path detection
+- **Python Helper**: Updated `src/tscon_helper.py` with robust TSCON support
+  - New `get_tscon_path()` function handles 32-bit/64-bit path resolution
+  - Enhanced `get_session_name()` function queries sessions before using environment variable
+  - Improved error messages with diagnostic information
+  - All generated batch files now use the same robust path detection
+
+### Technical Details
+- On 64-bit Windows, 32-bit processes see System32 redirected to SysWOW64
+- Using `Sysnative` allows 32-bit processes to access the real System32 directory
+- Session ID must be queried dynamically as SESSIONNAME environment variable may not be set correctly
+- TSCON requires administrator privileges and cannot work over RDP connections
+
+---
+
+## [0.1.15] - 2026-02-02
+
+### 🎨 Fixed Icon Sizes for Production and Installer
+
+### Fixed
+- **Icon Sizes**: Fixed Windows ICO file to include all required sizes for proper display
+  - Updated `icon.ico` to include: 16x16, 32x32, 48x48, 64x64, 128x128, 256x256 pixels
+  - Icons now display correctly at all DPI levels and in all Windows contexts (taskbar, desktop, file explorer, installer)
+  - Regenerated all icon files using updated `generate_icons.py` script
+- **Wizard Images**: Added validation check for Inno Setup wizard images (wizard_large.bmp should be 164x314, wizard_small.bmp should be 55x55)
+
+### Changed
+- **`generate_icons.py`**: Updated `WINDOWS_SIZES` to include all standard Windows icon sizes (16, 32, 48, 64, 128, 256)
+- **`assets/README.md`**: Updated documentation to reflect correct icon size requirements
+
+### Technical Details
+- Windows ICO files require multiple resolutions for optimal display at different DPI settings
+- Missing sizes (64x64, 128x128) caused icons to appear blurry or pixelated in some contexts
+- All icon files regenerated with proper multi-resolution support
+- Icon generator script now validates wizard image sizes for Inno Setup installer
+
+---
+
+## [0.1.14] - 2026-02-02
+
+### 🔧 Fixed Permission Errors for Installed Applications
+
+### Fixed
+- **Permission Denied Error**: Fixed `PermissionError` when running TeleCode installed in `Program Files` directory
+  - Log files (`telecode.log`, `telecode_audit.log`) now write to user data directory instead of installation directory
+  - Configuration file (`.env`) now stored in user data directory for installed applications
+  - User preferences now stored in user data directory
+  - Cross-platform support: Windows (`%APPDATA%\TeleCode`), macOS (`~/Library/Application Support/TeleCode`), Linux (`~/.config/TeleCode`)
+
+### Changed
+- **`setup_logging()`**: Now uses `get_user_data_dir()` for log file location
+- **`_audit_log()`**: Now writes audit logs to user data directory
+- **`UserPreferences`**: Now stores preferences in user data directory by default
+- **`.env` file handling**: Now checks user data directory first, falls back to current directory for development
+- **`load_dotenv()` calls**: Updated throughout codebase to use user data directory
+
+### Added
+- **`get_user_data_dir()`**: New function in `src/system_utils.py` for cross-platform user data directory
+- **`get_env_path()`**: New helper function to get `.env` file path (user data dir or current dir)
+- **`load_env_file()`**: New helper function to load `.env` from appropriate location
+
+### Security
+- ✅ All file operations now use user-writable directories
+- ✅ No changes to security model or sandboxing
+- ✅ Maintains backward compatibility with development mode
+
+---
+
+## [0.1.13] - 2026-02-02
+
+### 🎯 Agent Button Routing & Screenshot Timing
+
+### Fixed
+- **Initial Screenshot Timing**: Changed from 10 seconds to 8 seconds for faster feedback
+- **Button Routing**: Continue and Stop buttons now correctly target the specific agent chat when multiple are open
+  - Buttons store `agent_id` in callback_data to identify which agent tab to target
+  - Uses keyboard navigation (`Ctrl+{tab_number}`) to switch to the correct agent tab before executing actions
+  - Falls back gracefully to current tab behavior if navigation fails
+
+### Changed
+- **`send_continue()`**: Now accepts optional `agent_id` parameter to target specific agent tab
+- **`stop_generation()`**: Now accepts optional `agent_id` parameter to target specific agent tab
+- **Button Callbacks**: Parse `agent_id` from callback_data format `ai_send_continue:{agent_id}` or `ai_stop:{agent_id}`
+- **Result Data**: `send_prompt_and_wait()` now includes `agent_id` in result data for button routing
+
+### Added
+- **`_navigate_to_agent_tab()`**: New method to navigate to specific agent tabs using keyboard shortcuts
+- **Agent Tab Navigation**: Automatic navigation to correct agent tab before executing continue/stop actions
+- **Audit Document**: Created `docs/AGENT_BUTTON_ROUTING_AUDIT.md` with architecture analysis and implementation plan
+
+### Security
+- ✅ All operations remain within Cursor IDE (no external calls)
+- ✅ Agent IDs are workspace-scoped and validated
+- ✅ Graceful fallback if navigation fails
+
+### Performance
+- ✅ Fast keyboard shortcuts (< 1s total)
+- ✅ No network calls required
+- ✅ Minimal state overhead (single integer per button)
+
+---
+
+## [0.1.12] - 2026-02-02
+
+### 🌐 Custom Domain - telecodebot.com
+
+TeleCode is now available at **https://telecodebot.com**!
+
+### Added
+
+#### GitHub Pages Custom Domain
+- **Custom domain**: Site now accessible at `telecodebot.com`
+- **CNAME file**: Added for GitHub Pages custom domain configuration
+- **SEO improvements**: Added Open Graph, Twitter cards, and meta tags
+- **Canonical URL**: All pages now reference `telecodebot.com`
+- **Favicon**: Added SVG favicon support
+
+#### Updated `_config.yml`
+- Added `url: "https://telecodebot.com"` for Jekyll
+- Added social/SEO configuration
+- Added more exclusions for cleaner builds
+
+#### Updated `index.html`
+- Added full SEO meta tags (description, keywords, author)
+- Added Open Graph tags for social sharing
+- Added Twitter Card meta tags
+- Added canonical link
+- Updated footer with User Guide link and copyright
+
+### DNS Setup (for reference)
+Custom domain requires these DNS records at registrar:
+- A records pointing to GitHub Pages IPs
+- CNAME record for `www` subdomain
+
+---
+
+## [0.1.11] - 2026-02-02
+
+### 🎨 Website Redesign - Brand Identity & Modern UI
+
+Complete redesign of the landing page with brand-aligned aesthetics and modern web design.
+
+### Changed
+
+#### New Landing Page Design
+- **Brand Colors**: Emerald green palette matching the horse logo
+- **Typography**: Crimson Pro (serif headlines), Instrument Sans (body), Space Mono (code)
+- **Animations**: Floating gradient orbs, rising code particles, scroll reveal effects
+- **Layout**: Full one-pager with smooth scroll navigation
+- **Responsive**: Mobile-optimized with clean breakpoints
+
+#### Visual Enhancements
+- **Hero Section**: Large logo with gradient text, animated entry
+- **Feature Cards**: Hover effects with animated top border
+- **Terminal Demo**: Realistic terminal with blinking cursor
+- **Step-by-Step**: Numbered circles with rotating dashed borders
+- **Security Grid**: Icon cards with hover highlights
+- **Open Source Card**: Dark gradient with GitHub CTA
+
+#### Updated Content
+- **Version**: Updated to v0.1.11
+- **Checksums**: Updated SHA-256 hashes for main.py and requirements.txt
+- **Download Links**: Platform-specific installers with OS icons
+- **Features**: Highlighted OCR extraction as "NEW!"
+
+### Technical
+- Pure CSS animations (no JavaScript libraries)
+- CSS custom properties for brand colors
+- Intersection Observer for scroll reveals
+- Dynamic particle generation via vanilla JS
+
+---
+
 ## [0.1.11] - 2026-02-01
 
 ### 📸 OCR Text Extraction from Cursor Screenshots

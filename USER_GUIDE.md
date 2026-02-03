@@ -1,5 +1,9 @@
 # 📱 TeleCode User Guide
 
+<div align="center">
+  <img src="assets/telecode.png" alt="TeleCode Logo" width="150">
+</div>
+
 Welcome to TeleCode! This guide will help you get started with **voice-to-code from anywhere**.
 
 > 🎤 **Speak your prompts** • 💰 **Uses your Cursor plan** (no API costs) • 🌍 **Code from anywhere**
@@ -297,9 +301,10 @@ Bot: ✅ Prompt Sent to Cursor!
      ⏳ AI is now processing...
      
      [📊 Check] [📖 Diff] [✅ Accept]
-     [▶️ Run] [🌐 Search] [🚫 Cancel]
-     [➡️ Continue] [❌ Reject]
+     [❌ Reject] [➡️ Continue]
      [⚙️ Mode] [🧹 Cleanup]
+     
+     _Note: Run button only appears when AI is waiting for approval (not on completion)_
 ```
 
 ### Cursor Buttons (AI control - no git!)
@@ -314,7 +319,7 @@ Bot: ✅ Prompt Sent to Cursor!
 | 🚫 Cancel | **Cancel action** | Cancel any pending AI action (Escape) |
 | ➡️ Continue | **Continue AI** | Press Continue button (Enter) |
 | 🛑 Stop | **Stop generation** | Stop current AI generation (Ctrl+Shift+Backspace) |
-| ❌ Reject | Discard in Cursor | Uses Escape or Ctrl+Z |
+| ❌ Reject | Discard in Cursor | Uses Escape |
 | ⚙️ Mode | Change prompt mode | Switch between Agent/Chat |
 | 🧹 Cleanup | Close old agents | Closes oldest agent tabs when >5 |
 
@@ -580,9 +585,9 @@ Bot: 🎤 Processing voice message...
 
 ## Navigation
 
-Navigate through your project folders remotely.
+Switch between sandbox directories and navigate files.
 
-### Listing Files
+### Switching Sandboxes
 
 ```
 You: /ls
@@ -596,22 +601,31 @@ Bot: 📂 Contents of myproject
      📄 main.py
 ```
 
-### Changing Directories
+### Switching Sandboxes
 
 ```
-You: /cd src
+You: /sandbox
 
-Bot: ✅ Changed directory to: C:\Users\Dev\Projects\myproject\src
-     📂 Current: src
-     📍 Path: C:\Users\Dev\Projects\myproject\src
-     🔀 Git: ## main
+Bot: 📂 Sandbox Directories (3)
+
+     Current: Projects ✅
      
-     💻 Cursor: 🔴 Not Running
-     
-     [🚀 Open in Cursor]
+     Select a sandbox to switch to:
+     [Projects ✅]
+     [Work]
+     [Personal]
 ```
 
-**Smart Cursor Detection:** TeleCode now checks if Cursor is open when you change directories. Click the button to launch Cursor with live status updates!
+```
+You: /sandbox 2
+
+Bot: ✅ Switched to sandbox: Work
+     ⚠️ Restart TeleCode for full effect.
+     
+     Current sandbox: `Work`
+```
+
+**Note:** Use `/sandboxes` to see all available sandbox directories. Switch between them to work in different project folders.
 
 ### Opening Cursor from Telegram
 
@@ -678,8 +692,8 @@ Bot: ⛔ Access denied: Access to .env files is blocked
 
 ### Navigation Rules
 
-- You can only navigate **within your sandbox folder**
-- Parent directory (`..`) is allowed as long as you stay in sandbox
+- You can only access files **within your current sandbox folder**
+- Switch sandboxes using `/sandbox` to work in different project folders
 - Absolute paths outside sandbox are blocked
 - Sensitive files are always blocked even inside sandbox
 
@@ -837,9 +851,9 @@ Bot: 🔀 Branches
 You're trying to access files outside your sandbox or protected files:
 
 ```
-You: /cd C:\Windows
+You: /read C:\Windows\system32\config
 
-Bot: ❌ Access denied. Path escapes sandbox: C:\Windows
+Bot: ❌ Access denied. Path escapes sandbox: C:\Windows\system32\config
 ```
 
 ```
@@ -975,11 +989,17 @@ Bot: ⛔ SECURITY ALERT
 | List branches | `/branch` |
 | Undo changes | `/revert CONFIRM` |
 | AI prompt | `/ai [prompt]` |
+| AI accept | `/ai accept` |
+| AI reject | `/ai reject` |
+| AI continue | `/ai continue [prompt]` |
+| AI stop | `/ai stop` |
+| AI status | `/ai status` |
+| AI mode | `/ai mode [agent|chat]` |
 | **Select model** | `/model` |
 | Quick model switch | `/model opus`, `/model haiku` |
 | List models | `/models` |
 | **Open Cursor** | `/cursor` or `/cursor open` 💻 |
-| Change folder | `/cd [path]` |
+| Switch sandbox | `/sandbox` or `/sandboxes` 📂 |
 | List files | `/ls` |
 | Read file | `/read [file]` |
 | Current path | `/pwd` |

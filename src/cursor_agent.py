@@ -660,6 +660,45 @@ class CursorAgentBridge:
         except Exception as e:
             logger.warning(f"Failed to close panels: {e}")
     
+    def _navigate_to_agent_tab(self, agent_id: int) -> bool:
+        """
+        Navigate to a specific agent tab using keyboard shortcuts.
+        
+        Agent tabs in Cursor are accessed via Ctrl+1, Ctrl+2, etc.
+        The agent_id is 0-indexed (first agent = 0), but tabs are 1-indexed.
+        
+        Args:
+            agent_id: The agent tab index (0 = first agent, 1 = second, etc.)
+            
+        Returns:
+            True if navigation succeeded, False otherwise
+        """
+        if not AUTOMATION_AVAILABLE:
+            return False
+        
+        try:
+            # Focus Cursor window first
+            if not WindowManager.focus_cursor_window():
+                logger.warning(f"[NAVIGATE] Could not focus Cursor window")
+                return False
+            
+            time.sleep(0.3)
+            
+            # Agent tabs are 1-indexed, so agent_id 0 = tab 1, agent_id 1 = tab 2, etc.
+            tab_number = agent_id + 1
+            
+            # Navigate to the specific agent tab using Ctrl+{tab_number}
+            logger.info(f"[NAVIGATE] Switching to agent tab {tab_number} (agent_id={agent_id})...")
+            pyautogui.hotkey(MODIFIER_KEY, str(tab_number))
+            time.sleep(0.3)  # Wait for tab switch to complete
+            
+            logger.info(f"[NAVIGATE] Successfully navigated to agent tab {tab_number}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"[NAVIGATE] Failed to navigate to agent tab {agent_id}: {e}")
+            return False
+    
     def _cleanup_old_agents(self, max_agents: int = 5) -> bool:
         """
         Close oldest agent tabs if we have too many open.
@@ -843,10 +882,21 @@ class CursorAgentBridge:
         workspace_name = self.workspace.name
         
         async def report_status(message: str, is_complete: bool = False):
-            """Helper to call the status callback if provided."""
+            """Helper to call the status callback if provided.
+            
+            For non-complete updates, we use create_task to avoid blocking the event loop.
+            This allows button callbacks to be processed while Cursor is opening.
+            For complete updates, we await to ensure they're sent before returning.
+            """
             if status_callback:
                 try:
-                    await status_callback(message, is_complete)
+                    if is_complete:
+                        # Critical updates: await to ensure they're sent
+                        await status_callback(message, is_complete)
+                    else:
+                        # Non-critical updates: fire-and-forget to avoid blocking event loop
+                        # This allows button callbacks to be processed during Cursor opening
+                        asyncio.create_task(status_callback(message, is_complete))
                 except Exception as e:
                     logger.warning(f"Status callback error: {e}")
         
@@ -1504,10 +1554,21 @@ class CursorAgentBridge:
             AgentResult with completion status and screenshot path
         """
         async def report_status(message: str, is_complete: bool = False, screenshot_path: Optional[Path] = None):
-            """Helper to call the status callback if provided."""
+            """Helper to call the status callback if provided.
+            
+            For non-complete updates, we use create_task to avoid blocking the event loop.
+            This allows button callbacks to be processed while AI is running.
+            For complete updates, we await to ensure they're sent before returning.
+            """
             if status_callback:
                 try:
-                    await status_callback(message, is_complete, screenshot_path)
+                    if is_complete:
+                        # Critical updates: await to ensure they're sent
+                        await status_callback(message, is_complete, screenshot_path)
+                    else:
+                        # Non-critical updates: fire-and-forget to avoid blocking event loop
+                        # This allows button callbacks to be processed during AI execution
+                        asyncio.create_task(status_callback(message, is_complete, screenshot_path))
                 except Exception as e:
                     logger.warning(f"Status callback error: {e}")
         
@@ -1523,6 +1584,15 @@ class CursorAgentBridge:
             return result
         
         effective_mode = result.data.get("mode", "agent") if result.data else "agent"
+        # Capture agent_id for this prompt (agent_count - 1, since count was incremented after opening)
+        # Only relevant for agent mode
+        agent_id = None
+        if effective_mode == "agent" and result.data:
+            agent_count = result.data.get("agent_count", 0)
+            if agent_count > 0:
+                agent_id = agent_count - 1  # 0-indexed: first agent = 0, second = 1, etc.
+                logger.info(f"[AI_PROMPT] Agent ID for this prompt: {agent_id} (agent_count={agent_count})")
+        
         logger.info(f"[AI_PROMPT] Prompt sent successfully. Mode: {effective_mode}. Waiting for AI to process...")
         await report_status(f"🤖 Cursor AI is processing... ({effective_mode} mode)")
         
@@ -1530,7 +1600,86 @@ class CursorAgentBridge:
         self.session.state = AgentState.PROCESSING
         self._save_session()
         
-        # Step 2: Poll for completion
+        # Step 2: Capture baseline state BEFORE polling (to track changes from this prompt only)
+        # This ensures we only count changes made by this specific prompt, not cumulative changes
+        baseline_files = set()
+        baseline_diff_size = 0
+        
+        try:
+            # Capture baseline git status and diff size
+            async def run_git_status_baseline():
+                return await asyncio.to_thread(
+                    subprocess.run,
+                    ["git", "status", "--porcelain"],
+                    cwd=str(self.workspace),
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+            
+            async def run_git_diff_baseline():
+                return await asyncio.to_thread(
+                    subprocess.run,
+                    ["git", "diff", "--shortstat"],
+                    cwd=str(self.workspace),
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    encoding='utf-8',
+                    errors='replace'
+                )
+            
+            git_status_baseline, git_diff_baseline = await asyncio.gather(
+                run_git_status_baseline(),
+                run_git_diff_baseline(),
+                return_exceptions=True
+            )
+            
+            # Parse baseline files
+            if not isinstance(git_status_baseline, Exception) and git_status_baseline.returncode == 0:
+                if git_status_baseline.stdout.strip():
+                    for line in git_status_baseline.stdout.strip().split("\n"):
+                        if line.strip():
+                            parts = line.split(maxsplit=1)
+                            if len(parts) >= 2:
+                                baseline_files.add(parts[1].strip())
+            
+            # Parse baseline diff size
+            if not isinstance(git_diff_baseline, Exception) and git_diff_baseline.returncode == 0:
+                if git_diff_baseline.stdout.strip():
+                    import re
+                    diff_output = git_diff_baseline.stdout.strip()
+                    insertions = re.search(r'(\d+) insertion', diff_output)
+                    deletions = re.search(r'(\d+) deletion', diff_output)
+                    if insertions:
+                        baseline_diff_size += int(insertions.group(1))
+                    if deletions:
+                        baseline_diff_size += int(deletions.group(1))
+            
+            # Also check baseline untracked file sizes
+            async def get_file_size_baseline(file_path_str):
+                try:
+                    file_path = self.workspace / file_path_str.strip('"')
+                    def check_and_stat():
+                        if file_path.exists() and file_path.is_file():
+                            return file_path.stat().st_size
+                        return 0
+                    return await asyncio.to_thread(check_and_stat)
+                except Exception:
+                    return 0
+            
+            file_size_tasks = [get_file_size_baseline(f) for f in baseline_files]
+            file_sizes = await asyncio.gather(*file_size_tasks, return_exceptions=True)
+            for size in file_sizes:
+                if isinstance(size, int):
+                    baseline_diff_size += size // 50  # Rough line estimate
+            
+            logger.info(f"[AI_PROMPT] Baseline captured: {len(baseline_files)} files, ~{baseline_diff_size} lines")
+        except Exception as e:
+            logger.warning(f"[AI_PROMPT] Failed to capture baseline state: {e}, using empty baseline")
+            # Continue with empty baseline - will show all changes (fallback behavior)
+        
+        # Step 3: Poll for completion
         start_time = time.time()
         stable_count = 0
         last_files = set()
@@ -1540,7 +1689,7 @@ class CursorAgentBridge:
         sent_initial_screenshot = False  # Track if we sent the first quick screenshot
         
         # Screenshot intervals: every 60s for first 10 min, then every 300s (5 min)
-        INITIAL_SCREENSHOT_TIME = 10       # Send first screenshot at 10 seconds
+        INITIAL_SCREENSHOT_TIME = 8        # Send first screenshot at 8 seconds
         SCREENSHOT_INTERVAL_INITIAL = 60   # 1 minute for first 10 min
         SCREENSHOT_INTERVAL_LATER = 300    # 5 minutes after 10 min
         INITIAL_PERIOD = 600               # First 10 minutes
@@ -1550,14 +1699,43 @@ class CursorAgentBridge:
             
             # Check for file changes via git - track CONTENT changes, not just file list
             try:
-                # Get file list from git status
-                git_status = subprocess.run(
-                    ["git", "status", "--porcelain"],
-                    cwd=str(self.workspace),
-                    capture_output=True,
-                    text=True,
-                    timeout=10
+                # Helper function to run subprocess in thread pool (non-blocking)
+                async def run_git_status():
+                    return await asyncio.to_thread(
+                        subprocess.run,
+                        ["git", "status", "--porcelain"],
+                        cwd=str(self.workspace),
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                
+                async def run_git_diff():
+                    return await asyncio.to_thread(
+                        subprocess.run,
+                        ["git", "diff", "--shortstat"],
+                        cwd=str(self.workspace),
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                        encoding='utf-8',
+                        errors='replace'
+                    )
+                
+                # Run git commands in parallel (non-blocking)
+                git_status, git_diff = await asyncio.gather(
+                    run_git_status(),
+                    run_git_diff(),
+                    return_exceptions=True
                 )
+                
+                # Handle exceptions
+                if isinstance(git_status, Exception):
+                    logger.warning(f"[AI_PROMPT] Git status error: {git_status}")
+                    git_status = type('obj', (object,), {'returncode': 1, 'stdout': ''})()
+                if isinstance(git_diff, Exception):
+                    logger.warning(f"[AI_PROMPT] Git diff error: {git_diff}")
+                    git_diff = type('obj', (object,), {'returncode': 1, 'stdout': ''})()
                 
                 current_files = set()
                 if git_status.returncode == 0 and git_status.stdout.strip():
@@ -1568,18 +1746,6 @@ class CursorAgentBridge:
                                 current_files.add(parts[1].strip())
                 
                 current_count = len(current_files)
-                
-                # CRITICAL: Also check diff size to detect content changes in existing files
-                # This catches the case where a single file is being written over several minutes
-                git_diff = subprocess.run(
-                    ["git", "diff", "--shortstat"],
-                    cwd=str(self.workspace),
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    encoding='utf-8',
-                    errors='replace'
-                )
                 
                 # Parse diff size (e.g., "1 file changed, 500 insertions(+), 10 deletions(-)")
                 current_diff_size = 0
@@ -1595,13 +1761,34 @@ class CursorAgentBridge:
                         current_diff_size += int(deletions.group(1))
                 
                 # Also check untracked file sizes (for new files not yet staged)
-                for f in current_files:
-                    file_path = self.workspace / f.strip('"')  # Handle quoted paths
-                    if file_path.exists() and file_path.is_file():
-                        try:
-                            current_diff_size += file_path.stat().st_size // 50  # Rough line estimate
-                        except Exception:
-                            pass
+                # Run file stat operations in thread pool to avoid blocking
+                async def get_file_size(file_path_str):
+                    try:
+                        file_path = self.workspace / file_path_str.strip('"')
+                        # Check existence and get size in thread pool
+                        def check_and_stat():
+                            if file_path.exists() and file_path.is_file():
+                                return file_path.stat().st_size
+                            return 0
+                        return await asyncio.to_thread(check_and_stat)
+                    except Exception:
+                        pass
+                    return 0
+                
+                file_size_tasks = [get_file_size(f) for f in current_files]
+                file_sizes = await asyncio.gather(*file_size_tasks, return_exceptions=True)
+                for size in file_sizes:
+                    if isinstance(size, int):
+                        current_diff_size += size // 50  # Rough line estimate
+                
+                # Calculate DELTA changes from this prompt only (current - baseline)
+                # This ensures we only show changes made by this specific prompt
+                # Count all files that are different from baseline (new, modified, or deleted)
+                # For files: count files that are in current but not in baseline (new/modified)
+                # Note: We can't easily detect deletions without more complex logic, so we focus on additions/modifications
+                files_changed_from_prompt = current_files - baseline_files
+                files_changed_count = len(files_changed_from_prompt)
+                lines_changed_count = max(0, current_diff_size - baseline_diff_size)
                 
                 # Check if CONTENT changed (diff size grew) OR new files appeared
                 content_changed = (current_diff_size != last_diff_size) or (current_files != last_files)
@@ -1615,7 +1802,7 @@ class CursorAgentBridge:
                     if current_diff_size != last_diff_size:
                         logger.info(f"[AI_PROMPT] Diff size changed: {last_diff_size} -> {current_diff_size} lines")
                     
-                    await report_status(f"📝 AI working... {current_count} files, ~{current_diff_size} lines ({elapsed}s)")
+                    await report_status(f"📝 AI working... {files_changed_count} files, ~{lines_changed_count} lines ({elapsed}s)")
                     last_files = current_files
                     last_diff_size = current_diff_size
                     stable_count = 0
@@ -1630,22 +1817,24 @@ class CursorAgentBridge:
                 
                 # If we have changes and CONTENT is stable for threshold polls AND minimum time passed
                 # We need BOTH: enough stable polls AND minimum processing time
+                # Use delta values (changes from this prompt only) for completion check
                 if (stable_count >= stable_threshold and 
-                    (current_count > 0 or current_diff_size > 0) and 
+                    (files_changed_count > 0 or lines_changed_count > 0) and 
                     elapsed >= min_processing_time):
                     # AI appears to be done! Content hasn't changed for stability_time seconds
                     logger.info(f"[AI_PROMPT] ✅ AI COMPLETED! Content stable for {stability_time}s")
-                    logger.info(f"[AI_PROMPT]    Files: {current_count}, Lines: ~{current_diff_size}, Elapsed: {elapsed}s")
+                    logger.info(f"[AI_PROMPT]    Files: {files_changed_count} (from this prompt), Lines: ~{lines_changed_count}, Elapsed: {elapsed}s")
                     self.session.state = AgentState.CHANGES_PENDING
                     self.session.changes_detected = True
-                    self.session.pending_files = list(current_files)
+                    # Store only files changed from this prompt
+                    self.session.pending_files = list(files_changed_from_prompt) if files_changed_from_prompt else list(current_files)
                     self._save_session()
                     
-                    # Take screenshot
-                    screenshot_path = self.capture_screenshot()
+                    # Take screenshot (non-blocking)
+                    screenshot_path = await asyncio.to_thread(self.capture_screenshot)
                     
                     await report_status(
-                        f"✅ Cursor AI completed! ({current_count} files changed in {elapsed}s)",
+                        f"✅ Cursor AI completed! ({files_changed_count} files, ~{lines_changed_count} lines in {elapsed}s)",
                         True,
                         screenshot_path
                     )
@@ -1655,18 +1844,20 @@ class CursorAgentBridge:
                         message="AI completed with changes!",
                         data={
                             "status": "completed",
-                            "files_changed": current_count,
-                            "files": list(current_files),
+                            "files_changed": files_changed_count,  # Only files from this prompt
+                            "lines_changed": lines_changed_count,  # Only lines from this prompt
+                            "files": list(files_changed_from_prompt) if files_changed_from_prompt else list(current_files),
                             "elapsed_seconds": elapsed,
                             "screenshot": str(screenshot_path) if screenshot_path else None,
-                            "mode": effective_mode
+                            "mode": effective_mode,
+                            "agent_id": agent_id  # Include agent_id for button routing
                         }
                     )
-                elif stable_count >= stable_threshold and current_count > 0:
+                elif stable_count >= stable_threshold and files_changed_count > 0:
                     # Files are stable but haven't hit min processing time yet
                     remaining = int(min_processing_time - elapsed)
                     if remaining > 0:
-                        await report_status(f"📝 AI working... {current_count} files ({elapsed}s, verifying...)")
+                        await report_status(f"📝 AI working... {files_changed_count} files ({elapsed}s, verifying...)")
                 
                 # If no changes after a long while, AI might be waiting or stuck
                 # Only trigger this after 120s with absolutely no file changes
@@ -1674,8 +1865,8 @@ class CursorAgentBridge:
                 if elapsed > 120 and current_count == 0 and stable_count >= 30:
                     logger.info(f"[AI_PROMPT] No file changes after {elapsed}s - AI may be waiting for input")
                     
-                    # Take screenshot to show current state
-                    screenshot_path = self.capture_screenshot()
+                    # Take screenshot to show current state (non-blocking)
+                    screenshot_path = await asyncio.to_thread(self.capture_screenshot)
                     
                     self.session.state = AgentState.AWAITING_CHANGES
                     self._save_session()
@@ -1694,7 +1885,8 @@ class CursorAgentBridge:
                             "files_changed": 0,
                             "elapsed_seconds": elapsed,
                             "screenshot": str(screenshot_path) if screenshot_path else None,
-                            "mode": effective_mode
+                            "mode": effective_mode,
+                            "agent_id": agent_id  # Include agent_id for button routing
                         }
                     )
                 
@@ -1704,8 +1896,8 @@ class CursorAgentBridge:
                     screenshot_count += 1
                     last_screenshot_time = elapsed
                     
-                    initial_screenshot = self.capture_screenshot()
-                    files_info = f"{current_count} files changed" if current_count > 0 else "No file changes yet"
+                    initial_screenshot = await asyncio.to_thread(self.capture_screenshot)
+                    files_info = f"{files_changed_count} files changed" if files_changed_count > 0 else "No file changes yet"
                     
                     logger.info(f"[AI_PROMPT] Initial screenshot at {elapsed}s - {files_info}")
                     
@@ -1734,11 +1926,13 @@ class CursorAgentBridge:
                         screenshot_count += 1
                         last_screenshot_time = elapsed
                         
-                        # Take screenshot to show current state
-                        progress_screenshot = self.capture_screenshot()
+                        # Take screenshot to show current state (non-blocking)
+                        progress_screenshot = await asyncio.to_thread(self.capture_screenshot)
                         
-                        # Build status message
-                        files_info = f"{current_count} files changed" if current_count > 0 else "No file changes yet"
+                        # Build status message (show only changes from this prompt)
+                        files_info = f"{files_changed_count} files changed" if files_changed_count > 0 else "No file changes yet"
+                        if files_changed_count > 0 and lines_changed_count > 0:
+                            files_info += f", ~{lines_changed_count} lines"
                         interval_info = "1 min updates" if elapsed <= INITIAL_PERIOD else "5 min updates"
                         
                         logger.info(f"[AI_PROMPT] Progress screenshot #{screenshot_count} at {elapsed}s - {files_info}")
@@ -1752,24 +1946,26 @@ class CursorAgentBridge:
                             progress_screenshot
                         )
                     
-            except subprocess.TimeoutExpired:
-                logger.warning(f"[AI_PROMPT] Git status timed out at {elapsed}s")
-                await report_status(f"⏳ Still processing... ({elapsed}s)")
             except Exception as e:
                 logger.warning(f"[AI_PROMPT] Poll error at {elapsed}s: {e}")
+                # Continue polling even if there's an error
             
             await asyncio.sleep(poll_interval)
         
-        # Timeout reached
-        logger.info(f"[AI_PROMPT] Timeout after {int(timeout)}s. Files changed: {len(last_files)}")
+        # Timeout reached - calculate final delta values
+        timeout_files_changed = len(last_files - baseline_files)
+        timeout_lines_changed = max(0, last_diff_size - baseline_diff_size)
+        
+        logger.info(f"[AI_PROMPT] Timeout after {int(timeout)}s. Files changed from this prompt: {timeout_files_changed}")
         self.session.state = AgentState.IDLE
         self._save_session()
         
-        # Take final screenshot
-        screenshot_path = self.capture_screenshot()
+        # Take final screenshot (non-blocking)
+        screenshot_path = await asyncio.to_thread(self.capture_screenshot)
         
+        timeout_info = f" ({timeout_files_changed} files, ~{timeout_lines_changed} lines)" if timeout_files_changed > 0 else ""
         await report_status(
-            f"⏱️ Timeout after {int(timeout)}s - AI may still be working. Check Cursor directly.",
+            f"⏱️ Timeout after {int(timeout)}s - AI may still be working{timeout_info}. Check Cursor directly.",
             True,
             screenshot_path
         )
@@ -1779,11 +1975,13 @@ class CursorAgentBridge:
             message="Timeout reached - check Cursor manually",
             data={
                 "status": "timeout",
-                "files_changed": len(last_files),
-                "files": list(last_files),
+                "files_changed": timeout_files_changed,  # Only files from this prompt
+                "lines_changed": timeout_lines_changed,  # Only lines from this prompt
+                "files": list(last_files - baseline_files) if (last_files - baseline_files) else list(last_files),
                 "elapsed_seconds": int(timeout),
                 "screenshot": str(screenshot_path) if screenshot_path else None,
-                "mode": effective_mode
+                "mode": effective_mode,
+                "agent_id": agent_id  # Include agent_id for button routing
             }
         )
     
@@ -2226,10 +2424,8 @@ class CursorAgentBridge:
         """
         Reject/Undo changes using Cursor's UI automation.
         
-        For agent mode: Uses Ctrl+Z (Cmd+Z on macOS) to undo changes since
-        agent mode auto-saves files.
-        
-        For chat mode: Uses Escape to dismiss proposed changes.
+        Uses Escape key to dismiss/reject proposed changes in both agent and chat modes.
+        This is the standard way to reject changes in Cursor's interface.
         
         Returns:
             AgentResult with success status
@@ -2259,27 +2455,14 @@ class CursorAgentBridge:
             current_mode = self.session.prompt_mode or "agent"
             logger.info(f"[REJECT] Current mode: {current_mode}")
             
-            if current_mode == "chat":
-                # Chat mode: Press Escape to dismiss/reject proposed changes
-                logger.info("[REJECT] Chat mode - pressing Escape twice...")
-                pyautogui.press('escape')
-                time.sleep(0.3)
-                pyautogui.press('escape')  # Press twice to be sure
-                time.sleep(0.2)
-                shortcut_used = "Escape"
-            else:
-                # Agent mode: Files are auto-saved, so we need to UNDO
-                # Use Ctrl+Z (Cmd+Z on macOS) multiple times to undo changes
-                shortcut_display = f"{MODIFIER_KEY.title()}+Z"
-                logger.info(f"[REJECT] Agent mode - pressing {shortcut_display} multiple times to undo...")
-                
-                # Press Ctrl+Z / Cmd+Z multiple times (3 times to undo several changes)
-                for i in range(3):
-                    logger.info(f"[REJECT] Undo #{i+1}...")
-                    pyautogui.hotkey(MODIFIER_KEY, 'z')
-                    time.sleep(0.3)
-                
-                shortcut_used = f"{shortcut_display} (x3)"
+            # Both chat and agent mode: Press Escape to dismiss/reject proposed changes
+            # Escape is the standard way to reject/cancel changes in Cursor
+            logger.info("[REJECT] Pressing Escape to reject changes...")
+            pyautogui.press('escape')
+            time.sleep(0.3)
+            pyautogui.press('escape')  # Press twice to be sure
+            time.sleep(0.2)
+            shortcut_used = "Escape"
             
             logger.info(f"[REJECT] Completed: {shortcut_used}")
             
@@ -2363,12 +2546,17 @@ class CursorAgentBridge:
                 error=str(e)
             )
     
-    def stop_generation(self) -> AgentResult:
+    def stop_generation(self, agent_id: Optional[int] = None) -> AgentResult:
         """
         Stop the current AI generation in Cursor.
         
         Uses Ctrl+Shift+Backspace (Cmd+Shift+Backspace on macOS) to stop
         the AI while it's generating/working.
+        
+        Args:
+            agent_id: Optional agent tab ID to target. If provided, navigates
+                     to that specific agent tab before stopping.
+                     If None, uses current active tab (backward compatible).
         
         Returns:
             AgentResult with success status
@@ -2381,16 +2569,32 @@ class CursorAgentBridge:
             )
         
         try:
-            # Focus Cursor window
-            logger.info("[STOP] Focusing Cursor window...")
-            if not WindowManager.focus_cursor_window():
-                return AgentResult(
-                    success=False,
-                    message="Could not focus Cursor",
-                    error="Cursor window not found"
-                )
-            
-            time.sleep(0.5)
+            # Navigate to specific agent tab if agent_id is provided
+            if agent_id is not None:
+                logger.info(f"[STOP] Targeting agent tab {agent_id + 1} (agent_id={agent_id})...")
+                if not self._navigate_to_agent_tab(agent_id):
+                    # Fallback: still try to stop on current tab
+                    logger.warning(f"[STOP] Failed to navigate to agent {agent_id}, stopping on current tab")
+                    if not WindowManager.focus_cursor_window():
+                        return AgentResult(
+                            success=False,
+                            message="Could not focus Cursor",
+                            error="Cursor window not found"
+                        )
+                    time.sleep(0.5)
+                else:
+                    # Navigation succeeded, already focused
+                    time.sleep(0.2)  # Small delay after navigation
+            else:
+                # Backward compatible: focus window normally
+                logger.info("[STOP] Focusing Cursor window...")
+                if not WindowManager.focus_cursor_window():
+                    return AgentResult(
+                        success=False,
+                        message="Could not focus Cursor",
+                        error="Cursor window not found"
+                    )
+                time.sleep(0.5)
             
             # Press Ctrl+Shift+Backspace to stop generation
             shortcut_display = f"{MODIFIER_KEY.title()}+Shift+Backspace"
@@ -2402,14 +2606,16 @@ class CursorAgentBridge:
             self.session.state = AgentState.IDLE
             self._save_session()
             
-            self._add_to_history("stop", "stop_generation", f"stopped via {shortcut_display}")
+            action_desc = f"stopped via {shortcut_display} (agent_id={agent_id})" if agent_id is not None else f"stopped via {shortcut_display}"
+            self._add_to_history("stop", "stop_generation", action_desc)
             
             return AgentResult(
                 success=True,
                 message=f"🛑 Generation stopped! ({shortcut_display})",
                 data={
                     "action": "stop",
-                    "method": shortcut_display
+                    "method": shortcut_display,
+                    "agent_id": agent_id
                 }
             )
             
@@ -2527,12 +2733,17 @@ class CursorAgentBridge:
                 error=str(e)
             )
     
-    def send_continue(self) -> AgentResult:
+    def send_continue(self, agent_id: Optional[int] = None) -> AgentResult:
         """
         Press the Continue button in Cursor's AI agent.
         
         When the AI is waiting for approval or showing a Continue button,
         this presses Enter to activate it.
+        
+        Args:
+            agent_id: Optional agent tab ID to target. If provided, navigates
+                     to that specific agent tab before pressing Continue.
+                     If None, uses current active tab (backward compatible).
         
         Returns:
             AgentResult with success status
@@ -2545,30 +2756,48 @@ class CursorAgentBridge:
             )
         
         try:
-            # Focus Cursor window
-            logger.info("[CONTINUE] Focusing Cursor window...")
-            if not WindowManager.focus_cursor_window():
-                return AgentResult(
-                    success=False,
-                    message="Could not focus Cursor",
-                    error="Cursor window not found"
-                )
-            
-            time.sleep(0.5)
+            # Navigate to specific agent tab if agent_id is provided
+            if agent_id is not None:
+                logger.info(f"[CONTINUE] Targeting agent tab {agent_id + 1} (agent_id={agent_id})...")
+                if not self._navigate_to_agent_tab(agent_id):
+                    # Fallback: still try to continue on current tab
+                    logger.warning(f"[CONTINUE] Failed to navigate to agent {agent_id}, continuing on current tab")
+                    if not WindowManager.focus_cursor_window():
+                        return AgentResult(
+                            success=False,
+                            message="Could not focus Cursor",
+                            error="Cursor window not found"
+                        )
+                    time.sleep(0.5)
+                else:
+                    # Navigation succeeded, already focused
+                    time.sleep(0.2)  # Small delay after navigation
+            else:
+                # Backward compatible: focus window normally
+                logger.info("[CONTINUE] Focusing Cursor window...")
+                if not WindowManager.focus_cursor_window():
+                    return AgentResult(
+                        success=False,
+                        message="Could not focus Cursor",
+                        error="Cursor window not found"
+                    )
+                time.sleep(0.5)
             
             # Press Enter to click the Continue button
             logger.info("[CONTINUE] Pressing Enter to activate Continue button...")
             pyautogui.press('enter')
             time.sleep(0.3)
             
-            self._add_to_history("continue", "continue_button", "pressed Enter for Continue")
+            action_desc = f"pressed Enter for Continue (agent_id={agent_id})" if agent_id is not None else "pressed Enter for Continue"
+            self._add_to_history("continue", "continue_button", action_desc)
             
             return AgentResult(
                 success=True,
                 message="➡️ Continue button pressed!",
                 data={
                     "action": "continue",
-                    "method": "enter_key"
+                    "method": "enter_key",
+                    "agent_id": agent_id
                 }
             )
             

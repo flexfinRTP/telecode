@@ -79,22 +79,32 @@ class TrayIcon:
         self._running = False
         self._virtual_display_active = False
         
-    def _create_icon_image(self, color: str = "#39ff14") -> 'Image':
-        """Create a simple colored icon."""
+    def _create_icon_image(self, color: str = "#1B5E20") -> 'Image':
+        """Create a simple colored icon with brand colors."""
         # Create a 64x64 image with the TeleCode "T" logo
         size = 64
         image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
         
-        # Background circle
-        padding = 4
+        # Draw smooth circle with white outline and dark green fill
+        # Outer circle (white outline) - slightly larger
+        outline_width = 2
+        padding = 2
         draw.ellipse(
             [padding, padding, size - padding, size - padding],
-            fill=color
+            fill="#FFFFFF",  # White outline
+            outline=None
         )
         
-        # "T" letter in the center (dark)
-        t_color = "#0a0e14"
+        # Inner circle (dark green fill) - creates the white outline effect
+        inner_padding = padding + outline_width
+        draw.ellipse(
+            [inner_padding, inner_padding, size - inner_padding, size - inner_padding],
+            fill=color  # Dark green brand color
+        )
+        
+        # "T" letter in the center (white)
+        t_color = "#FFFFFF"
         # Horizontal bar of T
         draw.rectangle([16, 18, 48, 26], fill=t_color)
         # Vertical bar of T
@@ -220,10 +230,10 @@ class TrayIcon:
             self.icon.update_menu()
     
     def set_connected(self):
-        """Set icon to connected state (green)."""
+        """Set icon to connected state (dark green brand color)."""
         self.status = "Running"
         if self.icon:
-            self.icon.icon = self._create_icon_image("#39ff14")  # Green
+            self.icon.icon = self._create_icon_image("#1B5E20")  # Dark green brand color
             self._refresh_menu()
     
     def set_error(self, message: str = "Error"):

@@ -18,6 +18,7 @@ import platform
 import ctypes
 from threading import Thread, Event
 from typing import Optional
+from pathlib import Path
 
 logger = logging.getLogger("telecode.system")
 
@@ -392,4 +393,43 @@ def get_headless_info() -> dict:
             info["active"] = True
     
     return info
+
+
+def get_user_data_dir() -> Path:
+    """
+    Get the user data directory for TeleCode.
+    
+    This returns a user-writable directory where the application can store
+    logs, preferences, and other data files. This is important when the
+    application is installed in a protected directory like Program Files.
+    
+    Returns:
+        Path to the user data directory:
+        - Windows: %APPDATA%\TeleCode
+        - macOS: ~/Library/Application Support/TeleCode
+        - Linux: ~/.config/TeleCode
+    """
+    if IS_WINDOWS:
+        # Windows: Use APPDATA (typically C:\Users\Username\AppData\Roaming)
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            data_dir = Path(appdata) / "TeleCode"
+        else:
+            # Fallback to user home
+            data_dir = Path.home() / "AppData" / "Roaming" / "TeleCode"
+    elif IS_MACOS:
+        # macOS: Use Application Support
+        data_dir = Path.home() / "Library" / "Application Support" / "TeleCode"
+    else:
+        # Linux: Use XDG config directory
+        xdg_config = os.environ.get("XDG_CONFIG_HOME")
+        if xdg_config:
+            data_dir = Path(xdg_config) / "TeleCode"
+        else:
+            data_dir = Path.home() / ".config" / "TeleCode"
+    
+    # Create directory if it doesn't exist
+    data_dir.mkdir(parents=True, exist_ok=True)
+    
+    return data_dir
 

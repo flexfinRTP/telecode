@@ -49,8 +49,79 @@ pause > nul
 
 echo.
 echo Disconnecting session...
-REM Use full path to tscon.exe (required when PATH may not include System32)
-%SystemRoot%\System32\tscon.exe %sessionname% /dest:console
+
+REM Find tscon.exe - handle 32-bit/64-bit Windows correctly
+set "TSCON_PATH="
+
+REM Try multiple path variations
+if exist "%SystemRoot%\Sysnative\tscon.exe" (
+    set "TSCON_PATH=%SystemRoot%\Sysnative\tscon.exe"
+    goto :tscon_found
+)
+
+if exist "%SystemRoot%\System32\tscon.exe" (
+    set "TSCON_PATH=%SystemRoot%\System32\tscon.exe"
+    goto :tscon_found
+)
+
+if exist "%windir%\System32\tscon.exe" (
+    set "TSCON_PATH=%windir%\System32\tscon.exe"
+    goto :tscon_found
+)
+
+REM Try using WHERE command
+where tscon.exe >nul 2>&1
+if %errorlevel% == 0 (
+    for /f "delims=" %%i in ('where tscon.exe 2^>nul') do (
+        set "TSCON_PATH=%%i"
+        goto :tscon_found
+    )
+)
+
+REM If still not found, show detailed error
+echo.
+echo ========================================
+echo   ERROR: TSCON.EXE NOT FOUND
+echo ========================================
+echo.
+echo Diagnostic information:
+echo   SystemRoot: %SystemRoot%
+echo   windir: %windir%
+echo.
+echo TSCON.exe is missing from Windows System32.
+echo This may indicate:
+echo   - Windows Home edition (TSCON may not be available)
+echo   - Corrupted Windows installation
+echo   - System files are missing
+echo.
+echo NOTE: TSCON is primarily available on Windows Pro/Enterprise/Server editions.
+echo       Windows Home edition has limited or no TSCON support.
+echo.
+pause
+exit /b 1
+
+:tscon_found
+
+REM Query current session to get session ID
+echo       Querying current session...
+for /f "tokens=2" %%i in ('query session ^| findstr /C:"%USERNAME%" /C:"Active" /C:"Disc"') do (
+    set "SESSION_ID=%%i"
+    goto :found_session
+)
+
+REM Fallback: try to get session from SESSIONNAME environment variable
+if defined SESSIONNAME (
+    set "SESSION_ID=%SESSIONNAME%"
+    goto :found_session
+)
+
+REM Last resort: try console
+set "SESSION_ID=console"
+
+:found_session
+echo       Session ID: %SESSION_ID%
+echo.
+"%TSCON_PATH%" %SESSION_ID% /dest:console
 
 if errorlevel 1 (
     echo.
@@ -58,18 +129,29 @@ if errorlevel 1 (
     echo   ERROR: TSCON FAILED
     echo ========================================
     echo.
+    echo TSCON command failed with error code: %errorlevel%
+    echo.
     echo Possible causes:
     echo   - Not running as Administrator
-    echo   - Running in Remote Desktop session
+    echo   - Running in Remote Desktop session (TSCON won't work over RDP)
     echo   - Windows Home edition (limited support)
+    echo   - Session ID not found or invalid
     echo.
-    echo Current session: %sessionname%
+    echo Diagnostic information:
+    echo   TSCON path: %TSCON_PATH%
+    echo   Session ID: %SESSION_ID%
+    echo   Username: %USERNAME%
+    echo.
+    echo Current sessions:
+    query session
     echo.
     echo HOW TO FIX:
     echo   1. Close this window
     echo   2. Right-click "tscon_lock_verbose.bat"
     echo   3. Select "Run as administrator"
+    echo   4. Make sure you're not running over RDP
     echo.
     pause
+    exit /b 1
 )
 

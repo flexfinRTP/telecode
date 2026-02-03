@@ -1,22 +1,37 @@
 # GitHub Pages Configuration for TeleCode
 # =========================================
-# This file configures Jekyll for GitHub Pages.
-# To enable GitHub Pages:
-# 1. Go to your GitHub repo Settings → Pages
-# 2. Under "Source", select "Deploy from a branch"
-# 3. Choose "main" branch and "/ (root)" folder
-# 4. Click Save
-# 5. Your site will be live at: https://yourusername.github.io/telecode/
+# This file configures Jekyll for GitHub Pages with custom domain.
+#
+# Custom Domain Setup:
+# 1. CNAME file in repo root contains: telecodebot.com
+# 2. DNS configured at your domain registrar (see README)
+# 3. GitHub Pages Settings → Custom domain: telecodebot.com
+# 4. Enable "Enforce HTTPS" after DNS propagates
+#
+# Your site will be live at: https://telecodebot.com
 
+# Site settings
 theme: null
 title: TeleCode - Remote Cursor Commander
-description: Control your Cursor IDE from Telegram
+description: Voice-to-code from anywhere. Control Cursor AI from your phone via Telegram.
+url: "https://telecodebot.com"
+baseurl: ""
+
+# SEO and social
+author: TeleCode Team
+twitter:
+  card: summary_large_image
+social:
+  name: TeleCode
+  links:
+    - https://github.com/flexfinrtp/telecode
 
 # Exclude files from the build
 exclude:
   - src/
   - tests/
   - venv/
+  - build/
   - "*.py"
   - "*.bat"
   - "*.sh"
@@ -25,5 +40,9 @@ exclude:
   - .env.example
   - env.example
   - "*.log"
+  - "*.lock"
   - __pycache__/
+  - node_modules/
+  - .git/
+  - .github/
 

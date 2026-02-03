@@ -16,11 +16,10 @@ Commands:
   /ai       - Execute AI prompt via Cursor CLI
     /ai <prompt>         - Send prompt to Cursor
     /ai accept           - Accept AI changes (Ctrl+Enter)
-    /ai reject           - Reject AI changes (Ctrl+Z / Escape)
+    /ai reject           - Reject AI changes (Escape)
     /ai continue <prompt>- Follow-up prompt
     /ai stop             - Clear session
     /ai status           - Check agent status
-  /cd       - Change current directory
   /ls       - List directory contents
   /read     - Read file contents
   /log      - Show recent git commits
@@ -86,6 +85,9 @@ MAX_MESSAGE_LENGTH = 4096
 
 # Conversation states for /create command
 CREATE_AWAITING_NAME, CREATE_AWAITING_CONFIRM = range(2)
+
+# Conversation states for /commit command
+COMMIT_AWAITING_MESSAGE = 2
 
 
 class CommandRateLimiter:
@@ -205,18 +207,47 @@ class TeleCodeBot:
                 CREATE_AWAITING_NAME: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, self._cmd_create_name),
                     CommandHandler("cancel", self._cmd_create_cancel),
+                    # Allow /create to restart the conversation if called again
+                    CommandHandler("create", self._cmd_create_start),
                 ],
                 CREATE_AWAITING_CONFIRM: [
                     CallbackQueryHandler(self._cmd_create_confirm, pattern="^create_confirm$"),
                     CallbackQueryHandler(self._cmd_create_cancel_btn, pattern="^create_cancel$"),
                     CommandHandler("cancel", self._cmd_create_cancel),
+                    # Allow /create to restart the conversation if called again
+                    CommandHandler("create", self._cmd_create_start),
                 ],
             },
-            fallbacks=[CommandHandler("cancel", self._cmd_create_cancel)],
+            fallbacks=[
+                CommandHandler("cancel", self._cmd_create_cancel),
+                # Allow /create as fallback to restart conversation
+                CommandHandler("create", self._cmd_create_start),
+            ],
             per_user=True,
             per_chat=True,
         )
         self.app.add_handler(create_conv_handler)
+        
+        # Commit conversation handler (must be registered before text handler)
+        commit_conv_handler = ConversationHandler(
+            entry_points=[CommandHandler("commit", self._cmd_commit)],
+            states={
+                COMMIT_AWAITING_MESSAGE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self._cmd_commit_message),
+                    CommandHandler("cancel", self._cmd_commit_cancel),
+                    # Allow /commit to restart the conversation if called again
+                    CommandHandler("commit", self._cmd_commit),
+                ],
+            },
+            fallbacks=[
+                CommandHandler("cancel", self._cmd_commit_cancel),
+                # Allow /commit as fallback to restart conversation
+                CommandHandler("commit", self._cmd_commit),
+            ],
+            per_user=True,
+            per_chat=True,
+        )
+        self.app.add_handler(commit_conv_handler)
         
         handlers = [
             # Core commands
@@ -229,16 +260,18 @@ class TeleCodeBot:
             CommandHandler("diff", self._cmd_diff),
             CommandHandler("push", self._cmd_push),
             CommandHandler("pull", self._cmd_pull),
-            CommandHandler("commit", self._cmd_commit),
             CommandHandler("revert", self._cmd_revert),
             CommandHandler("log", self._cmd_log),
             CommandHandler("branch", self._cmd_branch),
             
             # File/Navigation commands
-            CommandHandler("cd", self._cmd_cd),
             CommandHandler("ls", self._cmd_ls),
             CommandHandler("read", self._cmd_read),
             CommandHandler("pwd", self._cmd_pwd),
+            
+            # Sandbox management commands
+            CommandHandler("sandbox", self._cmd_sandbox),
+            CommandHandler("sandboxes", self._cmd_sandboxes),
             
             # AI commands
             CommandHandler("ai", self._cmd_ai),
@@ -261,6 +294,9 @@ class TeleCodeBot:
             
             # Cursor control callback handler (open/status)
             CallbackQueryHandler(self._cmd_cursor_callback, pattern="^cursor_"),
+            
+            # Sandbox switch callback handler
+            CallbackQueryHandler(self._cmd_sandbox_callback, pattern="^sandbox_"),
             
             # Voice message handler
             MessageHandler(filters.VOICE, self._handle_voice),
@@ -460,15 +496,19 @@ Use /model to change AI model.
   /branch - List branches
 
 **Navigation:**
-  /cd [path] - Change directory
   /ls [path] - List files
   /read [file] - Read file contents
   /pwd - Show current path
 
+**Sandbox Management:** 📂
+  /sandbox - Switch sandbox directory
+  /sandboxes - List all sandbox directories
+  _(Switch sandboxes to work in different project folders)_
+
 **AI Control:** 🤖
   /ai [prompt] - Send prompt to Cursor
   /ai accept - Accept AI changes (Ctrl+Enter)
-  /ai reject - Reject AI changes (Ctrl+Z / Escape)
+  /ai reject - Reject AI changes (Escape)
   /ai continue [prompt] - Follow-up
   /ai stop - Clear session
   /ai status - Check state
@@ -481,7 +521,7 @@ Use /model to change AI model.
   /info - System status
   /help - This message
 
-📂 **Sandbox:** `{self.sentinel.dev_root.name}`
+📂 **Current Sandbox:** `{self.sentinel.dev_root.name}`
 🤖 **Model:** `{current_model.alias}` ({current_model.display_name})
 """
         await update.message.reply_text(help_text, parse_mode="Markdown")
@@ -600,21 +640,106 @@ Use /model to change AI model.
         """Stage and commit all changes."""
         self.sentinel.log_command(update.effective_user.id, "/commit")
         
-        # Get commit message from args or generate default
+        # Get commit message from args
         args = context.args
         if args:
-            commit_msg = " ".join(args)
+            # User provided message in command - use it directly with timestamp
+            user_msg = " ".join(args)
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+            commit_msg = f"{user_msg} - TeleCode: {timestamp}"
+            
+            # Stage all changes
+            add_result = self.cli.git_add_all()
+            if not add_result.success:
+                message = self._format_result("❌ Failed to stage changes", add_result)
+                await update.message.reply_text(message, parse_mode="Markdown")
+                return ConversationHandler.END
+            
+            # Commit
+            commit_result = self.cli.git_commit(commit_msg)
+            if commit_result.success:
+                message = f"✅ **Changes Committed!**\n\n📝 Message: _{commit_msg}_"
+            else:
+                message = self._format_result("❌ Commit Failed", commit_result)
+            
+            await update.message.reply_text(self._truncate_message(message), parse_mode="Markdown")
+            return ConversationHandler.END
         else:
-            commit_msg = f"TeleCode auto-commit: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            # No message provided - prompt user with list of changed files
+            # Get list of changed files
+            status_result = self.cli.git_status()
+            changed_files = []
+            
+            if status_result.success and status_result.stdout:
+                # Parse git status --short output
+                # Format: " M file.py" or "A  newfile.py" or "?? untracked.txt"
+                # Status is 2 chars, then space(s), then filename
+                for line in status_result.stdout.strip().split('\n'):
+                    line = line.strip()
+                    if not line or line.startswith('##'):
+                        continue  # Skip branch info line
+                    # Extract filename (everything after the status code and space)
+                    # Status codes are 2 characters, then space(s)
+                    if len(line) >= 4:
+                        # Find first space after status code (position 2)
+                        parts = line.split(None, 1)  # Split on whitespace, max 1 split
+                        if len(parts) >= 2:
+                            filename = parts[1].strip()
+                            # Handle renamed files (old -> new)
+                            if ' -> ' in filename:
+                                filename = filename.split(' -> ')[1]
+                            changed_files.append(filename)
+            
+            # Build message with file list
+            files_text = ""
+            if changed_files:
+                files_text = "\n\n**Changed files:**\n"
+                for i, filename in enumerate(changed_files[:20], 1):  # Limit to 20 files
+                    files_text += f"  {i}. `{filename}`\n"
+                if len(changed_files) > 20:
+                    files_text += f"  ... and {len(changed_files) - 20} more files\n"
+            else:
+                files_text = "\n\n_No changes detected._\n"
+            
+            message = (
+                "📝 **Enter Commit Message**\n\n"
+                "Please type your commit message:"
+                f"{files_text}\n"
+                "_The timestamp will be added automatically._\n"
+                "_(Type /cancel to abort)_"
+            )
+            await update.message.reply_text(message, parse_mode="Markdown")
+            return COMMIT_AWAITING_MESSAGE
+    
+    @require_auth
+    async def _cmd_commit_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle commit message input from user."""
+        user_msg = update.message.text.strip()
+        
+        if not user_msg:
+            await update.message.reply_text(
+                "❌ **Empty message!**\n\n"
+                "Please enter a commit message or /cancel:",
+                parse_mode="Markdown"
+            )
+            return COMMIT_AWAITING_MESSAGE
+        
+        # Combine user message with timestamp
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+        commit_msg = f"{user_msg} - TeleCode: {timestamp}"
+        
+        self.sentinel.log_command(update.effective_user.id, f"/commit {user_msg}")
         
         # Stage all changes
+        await update.message.reply_text("⏳ Staging changes...")
         add_result = self.cli.git_add_all()
         if not add_result.success:
             message = self._format_result("❌ Failed to stage changes", add_result)
             await update.message.reply_text(message, parse_mode="Markdown")
-            return
+            return ConversationHandler.END
         
         # Commit
+        await update.message.reply_text("⏳ Committing changes...")
         commit_result = self.cli.git_commit(commit_msg)
         if commit_result.success:
             message = f"✅ **Changes Committed!**\n\n📝 Message: _{commit_msg}_"
@@ -622,6 +747,13 @@ Use /model to change AI model.
             message = self._format_result("❌ Commit Failed", commit_result)
         
         await update.message.reply_text(self._truncate_message(message), parse_mode="Markdown")
+        return ConversationHandler.END
+    
+    @require_auth
+    async def _cmd_commit_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Cancel commit operation."""
+        await update.message.reply_text("❌ Commit cancelled.", parse_mode="Markdown")
+        return ConversationHandler.END
     
     @require_auth
     async def _cmd_revert(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -682,58 +814,6 @@ Use /model to change AI model.
     # ==========================================
     
     @require_auth
-    async def _cmd_cd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Change current directory and check Cursor status."""
-        if not context.args:
-            await update.message.reply_text(
-                "Usage: /cd [path]\n\nExample: /cd myproject",
-                parse_mode="Markdown"
-            )
-            return
-        
-        path = " ".join(context.args)
-        self.sentinel.log_command(update.effective_user.id, f"/cd {path}")
-        
-        success, message = self.cli.set_working_directory(path)
-        
-        if success:
-            # Show new location with git status
-            # Wrap in code block to avoid Markdown parsing issues with git status (## main)
-            info = self.cli.get_current_info()
-            
-            # Check Cursor status for this workspace
-            agent = self._get_cursor_agent()
-            cursor_status = agent.check_cursor_status()
-            
-            # Build status message
-            status_emoji = {
-                "not_running": "🔴",
-                "starting": "🟡",
-                "running": "🟠",
-                "ready": "🟢",
-            }
-            
-            cursor_emoji = status_emoji.get(cursor_status.get("status", ""), "⚪")
-            cursor_msg = cursor_status.get("message", "Unknown status")
-            
-            response = f"✅ {message}\n\n```\n{info}\n```\n\n💻 **Cursor:** {cursor_emoji} {cursor_msg}"
-            
-            # Add button to open Cursor if not already open for this workspace
-            if not cursor_status.get("workspace_open"):
-                keyboard = [[
-                    InlineKeyboardButton(
-                        "🚀 Open in Cursor", 
-                        callback_data=f"cursor_open"
-                    )
-                ]]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text(response, parse_mode="Markdown", reply_markup=reply_markup)
-            else:
-                await update.message.reply_text(response, parse_mode="Markdown")
-        else:
-            await update.message.reply_text(f"❌ {message}", parse_mode="Markdown")
-    
-    @require_auth
     async def _cmd_ls(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """List directory contents."""
         path = " ".join(context.args) if context.args else None
@@ -772,6 +852,129 @@ Use /model to change AI model.
         await update.message.reply_text(self._truncate_message(message), parse_mode="Markdown")
     
     @require_auth
+    @require_auth
+    async def _cmd_sandbox(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Switch to a different sandbox directory."""
+        from src.sandbox_config import get_sandbox_config
+        
+        sandbox_config = get_sandbox_config()
+        info = sandbox_config.get_info()
+        
+        if not context.args:
+            # Show list of sandboxes with current marked
+            message = f"📂 **Sandbox Directories** ({info['total']})\n\n"
+            
+            buttons = []
+            for sandbox in info['sandboxes']:
+                current_marker = " ✅" if sandbox['is_current'] else ""
+                label = f"{sandbox['name']}{current_marker}"
+                buttons.append([InlineKeyboardButton(
+                    label,
+                    callback_data=f"sandbox_switch_{sandbox['index']}"
+                )])
+            
+            keyboard = InlineKeyboardMarkup(buttons)
+            
+            message += f"**Current:** {info['current_name']}\n\n"
+            message += "Select a sandbox to switch to:"
+            
+            await update.message.reply_text(message, parse_mode="Markdown", reply_markup=keyboard)
+            return
+        
+        # Switch by index or name
+        arg = " ".join(context.args)
+        
+        # Try as index first
+        try:
+            index = int(arg)
+            success, msg = sandbox_config.set_current(index)
+            if success:
+                # Reload sentinel with new current sandbox
+                # Note: This requires restart for full effect, but we can update CLI
+                new_path = sandbox_config.get_current()
+                if new_path:
+                    self.cli.current_dir = Path(new_path)
+                    self.sentinel.dev_root = Path(new_path)
+                    self.sentinel.log_command(update.effective_user.id, f"/sandbox switch to {Path(new_path).name}")
+                    await update.message.reply_text(f"✅ {msg}\n\n⚠️ Restart TeleCode for full effect.")
+                else:
+                    await update.message.reply_text(f"❌ {msg}")
+            else:
+                await update.message.reply_text(f"❌ {msg}")
+        except ValueError:
+            # Try as name
+            found = False
+            for idx, sandbox in enumerate(info['sandboxes']):
+                if sandbox['name'].lower() == arg.lower():
+                    success, msg = sandbox_config.set_current(idx)
+                    if success:
+                        new_path = sandbox_config.get_current()
+                        if new_path:
+                            self.cli.current_dir = Path(new_path)
+                            self.sentinel.dev_root = Path(new_path)
+                            self.sentinel.log_command(update.effective_user.id, f"/sandbox switch to {Path(new_path).name}")
+                            await update.message.reply_text(f"✅ {msg}\n\n⚠️ Restart TeleCode for full effect.")
+                        found = True
+                        break
+            
+            if not found:
+                await update.message.reply_text(f"❌ Sandbox not found: {arg}\n\nUse /sandboxes to see available sandboxes.")
+    
+    @require_auth
+    async def _cmd_sandboxes(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """List all sandbox directories."""
+        from src.sandbox_config import get_sandbox_config
+        
+        sandbox_config = get_sandbox_config()
+        info = sandbox_config.get_info()
+        
+        message = f"📂 **Sandbox Directories** ({info['total']}/10)\n\n"
+        
+        for sandbox in info['sandboxes']:
+            current_marker = " ✅ **CURRENT**" if sandbox['is_current'] else ""
+            message += f"{sandbox['index'] + 1}. **{sandbox['name']}**{current_marker}\n"
+            message += f"   `{sandbox['path']}`\n\n"
+        
+        message += "Use `/sandbox [index]` or `/sandbox [name]` to switch.\n"
+        message += "Example: `/sandbox 2` or `/sandbox Projects`"
+        
+        await update.message.reply_text(message, parse_mode="Markdown")
+    
+    async def _cmd_sandbox_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle sandbox switch button callbacks."""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = update.effective_user.id
+        callback_data = query.data
+        
+        from src.sandbox_config import get_sandbox_config
+        sandbox_config = get_sandbox_config()
+        
+        if callback_data.startswith("sandbox_switch_"):
+            index_str = callback_data.replace("sandbox_switch_", "")
+            try:
+                index = int(index_str)
+                success, msg = sandbox_config.set_current(index)
+                if success:
+                    new_path = sandbox_config.get_current()
+                    if new_path:
+                        self.cli.current_dir = Path(new_path)
+                        self.sentinel.dev_root = Path(new_path)
+                        self.sentinel.log_command(user_id, f"/sandbox switch to {Path(new_path).name}")
+                        await query.message.reply_text(
+                            f"✅ {msg}\n\n"
+                            f"⚠️ **Restart TeleCode** for full effect.\n\n"
+                            f"Current sandbox: `{Path(new_path).name}`",
+                            parse_mode="Markdown"
+                        )
+                    else:
+                        await query.message.reply_text(f"❌ Failed to switch sandbox")
+                else:
+                    await query.message.reply_text(f"❌ {msg}")
+            except ValueError:
+                await query.message.reply_text("❌ Invalid sandbox index")
+    
     async def _cmd_pwd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show current working directory."""
         self.sentinel.log_command(update.effective_user.id, "/pwd")
@@ -790,8 +993,12 @@ Use /model to change AI model.
         Start the project creation conversation.
         
         Step 1: Ask for project name.
+        Can be called to restart the conversation if interrupted.
         """
         self.sentinel.log_command(update.effective_user.id, "/create")
+        
+        # Clear any existing state when restarting
+        context.user_data.pop('create_project_name', None)
         
         message = f"""
 🆕 **Create New Project**
@@ -1153,7 +1360,7 @@ Please try again with /create
         Usage:
             /ai <prompt>           - Send prompt to Cursor
             /ai accept             - Accept AI changes (Ctrl+Enter)
-            /ai reject             - Reject AI changes (Ctrl+Z / Escape)
+            /ai reject             - Reject AI changes (Escape)
             /ai continue <prompt>  - Continue with follow-up prompt
             /ai stop               - Stop/clear current session
             /ai status             - Check agent status
@@ -1224,7 +1431,7 @@ Please try again with /create
 
 **Cursor Controls:** (buttons OR commands)
   `/ai accept` (✅) - Accept changes (Ctrl+Enter)
-  `/ai reject` (❌) - Reject changes (Ctrl+Z / Escape)
+  `/ai reject` (❌) - Reject changes (Escape)
   📊 Check - See changed files
   📖 Diff - View changes
 
@@ -1375,134 +1582,185 @@ Please try again with /create
                 )
                 return
         
-        # Send prompt and wait for completion with live status updates
-        # Increased timeouts: 5 min max, 3s polls, 10 stable polls (30s), 15s min processing
-        result = await agent.send_prompt_and_wait(
-            prompt=prompt,
-            status_callback=status_callback,
-            model=current_model.id,
-            timeout=300.0,           # 5 minutes max for complex prompts
-            poll_interval=3.0,       # Check every 3 seconds
-            stable_threshold=10,     # Need 10 stable polls (30s of no changes)
-            min_processing_time=15.0 # At least 15s before declaring done
-        )
-        
-        if result.success:
-            data = result.data or {}
-            status = data.get("status", "completed")
-            mode = data.get("mode", "agent")
-            files_changed = data.get("files_changed", 0)
-            elapsed = data.get("elapsed_seconds", 0)
-            files = data.get("files", [])
-            screenshot_path = data.get("screenshot")
-            
-            # Build status emoji and message based on result
-            if status == "completed":
-                status_emoji = "✅"
-                status_text = f"**Cursor AI Completed!** ({files_changed} files, {elapsed}s)"
-            elif status == "waiting":
-                status_emoji = "⏳"
-                status_text = f"**Cursor AI may be waiting...** ({elapsed}s)"
-            else:  # timeout
-                status_emoji = "⏱️"
-                status_text = f"**Timeout** - Check Cursor ({elapsed}s)"
-            
-            # Mode info
-            auto_save = mode == "agent"
-            if auto_save:
-                mode_info = "🤖 Agent mode - Files auto-saved"
-            else:
-                mode_info = "💬 Chat mode - Click Accept to apply"
-            
-            # Files list (truncated)
-            files_preview = ""
-            if files:
-                files_list = files[:5]
-                files_preview = "\n📁 " + ", ".join(f"`{f}`" for f in files_list)
-                if len(files) > 5:
-                    files_preview += f" _+{len(files)-5} more_"
-            
-            # Build final message
-            message = f"""{status_emoji} {status_text}
+        # CRITICAL: Run AI work in background task to avoid blocking button callbacks
+        # This allows the handler to return immediately so button presses can be processed
+        async def run_ai_work():
+            """Run AI work in background - allows button callbacks to be processed independently."""
+            try:
+                # Send prompt and wait for completion with live status updates
+                # Increased timeouts: 5 min max, 3s polls, 10 stable polls (30s), 15s min processing
+                result = await agent.send_prompt_and_wait(
+                    prompt=prompt,
+                    status_callback=status_callback,
+                    model=current_model.id,
+                    timeout=300.0,           # 5 minutes max for complex prompts
+                    poll_interval=3.0,       # Check every 3 seconds
+                    stable_threshold=10,     # Need 10 stable polls (30s of no changes)
+                    min_processing_time=15.0 # At least 15s before declaring done
+                )
+                
+                if result.success:
+                    data = result.data or {}
+                    status = data.get("status", "completed")
+                    mode = data.get("mode", "agent")
+                    files_changed = data.get("files_changed", 0)
+                    elapsed = data.get("elapsed_seconds", 0)
+                    files = data.get("files", [])
+                    screenshot_path = data.get("screenshot")
+                    agent_id = data.get("agent_id")  # Agent ID for routing buttons to correct chat
+                    
+                    # Build status emoji and message based on result
+                    # files_changed already contains only changes from this prompt (from cursor_agent.py)
+                    lines_changed = data.get("lines_changed", 0)  # Get lines changed if available
+                    if status == "completed":
+                        status_emoji = "✅"
+                        if lines_changed > 0:
+                            status_text = f"**Cursor AI Completed!** ({files_changed} files, ~{lines_changed} lines, {elapsed}s)"
+                        else:
+                            status_text = f"**Cursor AI Completed!** ({files_changed} files, {elapsed}s)"
+                    elif status == "waiting":
+                        status_emoji = "⏳"
+                        status_text = f"**Cursor AI may be waiting...** ({elapsed}s)"
+                    else:  # timeout
+                        status_emoji = "⏱️"
+                        status_text = f"**Timeout** - Check Cursor ({elapsed}s)"
+                    
+                    # Mode info
+                    auto_save = mode == "agent"
+                    if auto_save:
+                        mode_info = "🤖 Agent mode - Files auto-saved"
+                    else:
+                        mode_info = "💬 Chat mode - Click Accept to apply"
+                    
+                    # Files list (truncated)
+                    files_preview = ""
+                    if files:
+                        files_list = files[:5]
+                        files_preview = "\n📁 " + ", ".join(f"`{f}`" for f in files_list)
+                        if len(files) > 5:
+                            files_preview += f" _+{len(files)-5} more_"
+                    
+                    # Build final message
+                    message = f"""{status_emoji} {status_text}
 
 {mode_info}
 {files_preview}
 
 📝 _{prompt[:80]}{'...' if len(prompt) > 80 else ''}_"""
-            
-            # Build inline keyboard with ALL controls in one grid
-            keyboard = [
-                [
-                    InlineKeyboardButton("📊 Check", callback_data="ai_check"),
-                    InlineKeyboardButton("📖 Diff", callback_data="ai_view_diff"),
-                    InlineKeyboardButton("✅ Accept", callback_data="ai_accept"),
-                ],
-                [
-                    InlineKeyboardButton("❌ Reject", callback_data="ai_reject"),
-                    InlineKeyboardButton("▶️ Run", callback_data="ai_run"),
-                    InlineKeyboardButton("➡️ Continue", callback_data="ai_send_continue"),
-                ],
-                [
-                    InlineKeyboardButton("⚙️ Mode", callback_data="ai_mode"),
-                    InlineKeyboardButton("🧹 Cleanup", callback_data="ai_cleanup"),
-                ],
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            # Send screenshot with the completion message
-            if screenshot_path and Path(screenshot_path).exists():
-                try:
-                    # Delete the old status message
-                    await status_msg.delete()
-                except Exception:
-                    pass
-                
-                # Send photo with caption and buttons
-                try:
-                    with open(screenshot_path, 'rb') as photo:
-                        await update.message.reply_photo(
-                            photo=photo,
-                            caption=self._truncate_message(message)[:1024],  # Photo captions max 1024 chars
-                            parse_mode="Markdown",
-                            reply_markup=reply_markup
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to send screenshot: {e}")
-                    # Fallback to text message
-                    await update.message.reply_text(
-                        self._truncate_message(message),
-                        parse_mode="Markdown",
-                        reply_markup=reply_markup
-                    )
-            else:
-                # No screenshot - just update the message
+                    
+                    # Build inline keyboard with ALL controls in one grid
+                    # Include agent_id in callback_data for continue/stop buttons to route to correct chat
+                    continue_callback = f"ai_send_continue:{agent_id}" if agent_id is not None else "ai_send_continue"
+                    stop_callback = f"ai_stop:{agent_id}" if agent_id is not None else "ai_stop"
+                    
+                    # For completed status, remove Run button since it uses same command (Enter) as Continue
+                    if status == "completed":
+                        keyboard = [
+                            [
+                                InlineKeyboardButton("📊 Check", callback_data="ai_check"),
+                                InlineKeyboardButton("📖 Diff", callback_data="ai_view_diff"),
+                                InlineKeyboardButton("✅ Accept", callback_data="ai_accept"),
+                            ],
+                            [
+                                InlineKeyboardButton("❌ Reject", callback_data="ai_reject"),
+                                InlineKeyboardButton("➡️ Continue", callback_data=continue_callback),
+                            ],
+                            [
+                                InlineKeyboardButton("⚙️ Mode", callback_data="ai_mode"),
+                                InlineKeyboardButton("🧹 Cleanup", callback_data="ai_cleanup"),
+                            ],
+                        ]
+                    else:
+                        # For waiting/timeout status, keep Run button
+                        keyboard = [
+                            [
+                                InlineKeyboardButton("📊 Check", callback_data="ai_check"),
+                                InlineKeyboardButton("📖 Diff", callback_data="ai_view_diff"),
+                                InlineKeyboardButton("✅ Accept", callback_data="ai_accept"),
+                            ],
+                            [
+                                InlineKeyboardButton("❌ Reject", callback_data="ai_reject"),
+                                InlineKeyboardButton("▶️ Run", callback_data="ai_run"),
+                                InlineKeyboardButton("➡️ Continue", callback_data=continue_callback),
+                            ],
+                            [
+                                InlineKeyboardButton("⚙️ Mode", callback_data="ai_mode"),
+                                InlineKeyboardButton("🧹 Cleanup", callback_data="ai_cleanup"),
+                            ],
+                        ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    # Send screenshot with the completion message
+                    if screenshot_path and Path(screenshot_path).exists():
+                        try:
+                            # Delete the old status message
+                            await status_msg.delete()
+                        except Exception:
+                            pass
+                        
+                        # Send photo with caption and buttons
+                        try:
+                            with open(screenshot_path, 'rb') as photo:
+                                await update.message.reply_photo(
+                                    photo=photo,
+                                    caption=self._truncate_message(message)[:1024],  # Photo captions max 1024 chars
+                                    parse_mode="Markdown",
+                                    reply_markup=reply_markup
+                                )
+                        except Exception as e:
+                            logger.warning(f"Failed to send screenshot: {e}")
+                            # Fallback to text message
+                            await update.message.reply_text(
+                                self._truncate_message(message),
+                                parse_mode="Markdown",
+                                reply_markup=reply_markup
+                            )
+                    else:
+                        # No screenshot - just update the message
+                        try:
+                            await status_msg.edit_text(
+                                self._truncate_message(message), 
+                                parse_mode="Markdown",
+                                reply_markup=reply_markup
+                            )
+                        except Exception:
+                            await update.message.reply_text(
+                                self._truncate_message(message), 
+                                parse_mode="Markdown",
+                                reply_markup=reply_markup
+                            )
+                else:
+                    error = result.error or "Unknown error"
+                    message = f"❌ **Failed to Send Prompt**\n\n{result.message}\n\n```\n{error}\n```"
+                    
+                    # Add troubleshooting tips
+                    if "automation" in error.lower() or "pyautogui" in error.lower():
+                        message += "\n\n💡 **Tip:** Make sure `pyautogui` and `pyperclip` are installed:\n`pip install pyautogui pyperclip`"
+                    elif "cursor" in error.lower():
+                        message += "\n\n💡 **Tip:** Make sure Cursor is installed and `cursor` is in your PATH."
+                    
+                    # Update the status message with the error
+                    try:
+                        await status_msg.edit_text(self._truncate_message(message), parse_mode="Markdown")
+                    except Exception:
+                        await update.message.reply_text(self._truncate_message(message), parse_mode="Markdown")
+            except Exception as e:
+                logger.error(f"Error in background AI work: {e}", exc_info=True)
                 try:
                     await status_msg.edit_text(
-                        self._truncate_message(message), 
-                        parse_mode="Markdown",
-                        reply_markup=reply_markup
+                        f"❌ **Error during AI execution**\n\n{str(e)}",
+                        parse_mode="Markdown"
                     )
                 except Exception:
                     await update.message.reply_text(
-                        self._truncate_message(message), 
-                        parse_mode="Markdown",
-                        reply_markup=reply_markup
+                        f"❌ **Error during AI execution**\n\n{str(e)}",
+                        parse_mode="Markdown"
                     )
-        else:
-            error = result.error or "Unknown error"
-            message = f"❌ **Failed to Send Prompt**\n\n{result.message}\n\n```\n{error}\n```"
-            
-            # Add troubleshooting tips
-            if "automation" in error.lower() or "pyautogui" in error.lower():
-                message += "\n\n💡 **Tip:** Make sure `pyautogui` and `pyperclip` are installed:\n`pip install pyautogui pyperclip`"
-            elif "cursor" in error.lower():
-                message += "\n\n💡 **Tip:** Make sure Cursor is installed and `cursor` is in your PATH."
-            
-            # Update the status message with the error
-            try:
-                await status_msg.edit_text(self._truncate_message(message), parse_mode="Markdown")
-            except Exception:
-                await update.message.reply_text(self._truncate_message(message), parse_mode="Markdown")
+        
+        # CRITICAL: Run AI work in background task and return immediately
+        # This allows button callbacks to be processed independently
+        asyncio.create_task(run_ai_work())
+        # Handler returns immediately - button callbacks can now be processed!
     
     async def _cmd_ai_accept(self, update: Update):
         """Accept all AI changes in Cursor (uses Ctrl+Enter)."""
@@ -1527,7 +1785,7 @@ The AI changes have been applied via Ctrl+Enter.
         await update.message.reply_text(response, parse_mode="Markdown")
     
     async def _cmd_ai_reject(self, update: Update):
-        """Reject AI changes in Cursor (uses Ctrl+Z or Escape)."""
+        """Reject AI changes in Cursor (uses Escape)."""
         user_id = update.effective_user.id
         self.sentinel.log_command(user_id, "/ai reject")
         
@@ -1540,8 +1798,8 @@ The AI changes have been applied via Ctrl+Enter.
         ]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        current_mode = agent.get_prompt_mode()
-        method = "Escape" if current_mode == "chat" else "Ctrl+Z (undo)"
+        # Both modes use Escape to reject changes
+        method = "Escape"
         
         await update.message.reply_text(
             f"⚠️ **Confirm Reject**\n\n"
@@ -1608,7 +1866,7 @@ The AI changes have been applied via Ctrl+Enter.
                 
                 message = f"✅ **Mode Changed!**\n\n{description}"
                 if auto_save:
-                    message += "\n\n💡 _Files auto-save, Reject uses Ctrl+Z_"
+                    message += "\n\n💡 _Files auto-save, Reject uses Escape_"
                 else:
                     message += "\n\n⚠️ _Click Accept to apply, Reject uses Escape_"
                 
@@ -1642,7 +1900,7 @@ The AI changes have been applied via Ctrl+Enter.
                 f"Current: {mode_emoji} **{current_mode.title()}**\n\n"
                 f"🤖 **Agent** - Auto-saves files to disk (SAFEST)\n"
                 f"   _Files saved immediately - won't lose work_\n"
-                f"   _Reject uses Ctrl+Z to undo_\n\n"
+                f"   _Reject uses Escape_\n\n"
                 f"💬 **Chat** - Proposed changes need Accept\n"
                 f"   _More control, review before accepting_\n"
                 f"   _Reject uses Escape to discard_\n\n"
@@ -2114,8 +2372,8 @@ The AI changes have been applied via {shortcut}.
             # Show reject confirmation (Cursor only, no git)
             self.sentinel.log_command(user_id, "/ai reject (button)")
             
-            current_mode = agent.get_prompt_mode()
-            method = "Escape" if current_mode == "chat" else "Ctrl+Z (undo x3)"
+            # Both modes use Escape to reject changes
+            method = "Escape"
             
             keyboard = [[
                 InlineKeyboardButton("⚠️ Yes, Reject Changes", callback_data="ai_reject_confirm"),
@@ -2134,27 +2392,59 @@ The AI changes have been applied via {shortcut}.
             )
         
         elif callback_data == "ai_reject_confirm":
-            # Actually reject using Cursor automation (Ctrl+Z or Escape)
+            # Actually reject using Cursor automation (Escape)
             self.sentinel.log_command(user_id, "/ai reject (confirmed)")
             
             result = agent.revert_changes_via_cursor()
             
             if result.success:
                 data = result.data or {}
-                shortcut = data.get("shortcut", "Ctrl+Z")
+                shortcut = data.get("shortcut", "Escape")
                 message = f"""❌ **Changes Rejected in Cursor!**
 
 🔄 Method: {shortcut}
 
 📌 _This only affected Cursor, not git._
 💡 _Use `/revert CONFIRM` for git restore._"""
+                
+                # Capture screenshot after rejection
+                screenshot_path = agent.capture_screenshot()
+                
+                # Send screenshot with message if available
+                if screenshot_path and Path(screenshot_path).exists():
+                    try:
+                        # Delete the confirmation message first
+                        try:
+                            await query.message.delete()
+                        except Exception:
+                            pass
+                        
+                        # Send photo with caption to the chat
+                        with open(screenshot_path, 'rb') as photo:
+                            await query.message.chat.send_photo(
+                                photo=photo,
+                                caption=self._truncate_message(message)[:1024],  # Photo captions max 1024 chars
+                                parse_mode="Markdown"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to send rejection screenshot: {e}")
+                        # Fallback to text message
+                        try:
+                            await query.edit_message_text(message, parse_mode="Markdown")
+                        except Exception:
+                            await query.message.reply_text(message, parse_mode="Markdown")
+                else:
+                    # No screenshot - just send text message
+                    try:
+                        await query.edit_message_text(message, parse_mode="Markdown")
+                    except Exception:
+                        await query.message.reply_text(message, parse_mode="Markdown")
             else:
                 message = f"❌ Reject failed: {result.error or result.message}"
-            
-            try:
-                await query.edit_message_text(message, parse_mode="Markdown")
-            except Exception:
-                await query.message.reply_text(message, parse_mode="Markdown")
+                try:
+                    await query.edit_message_text(message, parse_mode="Markdown")
+                except Exception:
+                    await query.message.reply_text(message, parse_mode="Markdown")
         
         elif callback_data == "ai_reject_cancel":
             # Cancel reject
@@ -2252,7 +2542,7 @@ The AI changes have been applied via {shortcut}.
                 f"⚙️ **Select Prompt Mode**\n\n"
                 f"Current: **{current_mode}**\n\n"
                 f"🤖 **Agent** - Auto-saves files to disk (SAFEST)\n"
-                f"   _Won't lose work, Reject uses Ctrl+Z_\n\n"
+                f"   _Won't lose work, Reject uses Escape_\n\n"
                 f"💬 **Chat** - Proposed changes need Accept\n"
                 f"   _More control, Reject uses Escape_",
                 parse_mode="Markdown",
@@ -2273,7 +2563,7 @@ The AI changes have been applied via {shortcut}.
                 
                 message = f"✅ **Mode Changed!**\n\n{description}"
                 if auto_save:
-                    message += "\n\n💡 _Files auto-save, Reject uses Ctrl+Z_"
+                    message += "\n\n💡 _Files auto-save, Reject uses Escape_"
                 else:
                     message += "\n\n⚠️ _Click Accept to apply, Reject uses Escape_"
                 
@@ -2379,14 +2669,24 @@ The AI changes have been applied via {shortcut}.
             except Exception:
                 await query.message.reply_text(message, parse_mode="Markdown")
         
-        elif callback_data == "ai_stop":
+        elif callback_data == "ai_stop" or callback_data.startswith("ai_stop:"):
             # Stop the current AI generation (Ctrl+Shift+Backspace)
-            self.sentinel.log_command(user_id, "/ai stop (button)")
+            # Parse agent_id from callback_data if present (format: "ai_stop:{agent_id}")
+            agent_id = None
+            if ":" in callback_data:
+                try:
+                    agent_id = int(callback_data.split(":")[1])
+                    self.sentinel.log_command(user_id, f"/ai stop (button, agent_id={agent_id})")
+                except (ValueError, IndexError):
+                    self.sentinel.log_command(user_id, "/ai stop (button)")
+            else:
+                self.sentinel.log_command(user_id, "/ai stop (button)")
             
-            result = agent.stop_generation()
+            result = agent.stop_generation(agent_id=agent_id)
             
             if result.success:
-                message = f"🛑 **Generation Stopped!**\n\n{result.message}"
+                agent_info = f" (agent tab {agent_id + 1})" if agent_id is not None else ""
+                message = f"🛑 **Generation Stopped!**{agent_info}\n\n{result.message}"
             else:
                 message = f"❌ **Failed to stop:** {result.error or result.message}"
             
@@ -2395,14 +2695,24 @@ The AI changes have been applied via {shortcut}.
             except Exception:
                 await query.message.reply_text(message, parse_mode="Markdown")
         
-        elif callback_data == "ai_send_continue":
+        elif callback_data == "ai_send_continue" or callback_data.startswith("ai_send_continue:"):
             # Press Enter to click the Continue button in Cursor
-            self.sentinel.log_command(user_id, "/ai continue (button)")
+            # Parse agent_id from callback_data if present (format: "ai_send_continue:{agent_id}")
+            agent_id = None
+            if ":" in callback_data:
+                try:
+                    agent_id = int(callback_data.split(":")[1])
+                    self.sentinel.log_command(user_id, f"/ai continue (button, agent_id={agent_id})")
+                except (ValueError, IndexError):
+                    self.sentinel.log_command(user_id, "/ai continue (button)")
+            else:
+                self.sentinel.log_command(user_id, "/ai continue (button)")
             
-            result = agent.send_continue()
+            result = agent.send_continue(agent_id=agent_id)
             
             if result.success:
-                message = f"➡️ **Continue Pressed!**\n\n{result.message}\n\n_Pressed Enter to activate Continue button._"
+                agent_info = f" (agent tab {agent_id + 1})" if agent_id is not None else ""
+                message = f"➡️ **Continue Pressed!**{agent_info}\n\n{result.message}\n\n_Pressed Enter to activate Continue button._"
             else:
                 message = f"❌ **Failed to continue:** {result.error or result.message}"
             
@@ -2608,7 +2918,7 @@ The AI changes have been applied via {shortcut}.
             if self.tray:
                 self.tray.set_connected()
         except Exception as e:
-            logger.debug(f"Tray icon not available: {e}")
+            logger.warning(f"Tray icon not available: {e}")
             self.tray = None
         
         # Start polling
@@ -2646,29 +2956,48 @@ The AI changes have been applied via {shortcut}.
         """Handle Settings click from tray icon."""
         logger.info("Settings requested from system tray")
         try:
-            # Open the config GUI using --settings-only mode
-            # This bypasses the instance lock check and doesn't try to start
-            # a new bot after saving (since one is already running)
             import subprocess
-            project_root = Path(__file__).parent.parent
+            import threading
             
-            # Use pythonw on Windows to avoid console window, python on other platforms
-            if sys.platform == "win32":
-                # Try pythonw first for no console window
-                pythonw = Path(sys.executable).parent / "pythonw.exe"
-                python_exe = str(pythonw) if pythonw.exists() else sys.executable
+            # Check if running as frozen EXE (PyInstaller)
+            is_frozen = getattr(sys, 'frozen', False) or hasattr(sys, '_MEIPASS')
+            
+            if is_frozen:
+                # Running as EXE - launch the EXE itself with --settings-only
+                exe_path = sys.executable
+                logger.info(f"Launching settings from EXE: {exe_path}")
+                
+                subprocess.Popen(
+                    [exe_path, "--settings-only"],
+                    # On Windows, use CREATE_NO_WINDOW to avoid console flash
+                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
             else:
-                python_exe = sys.executable
+                # Running from source - launch main.py
+                project_root = Path(__file__).parent.parent
+                main_py = project_root / "main.py"
+                
+                # Use pythonw on Windows to avoid console window
+                if sys.platform == "win32":
+                    pythonw = Path(sys.executable).parent / "pythonw.exe"
+                    python_exe = str(pythonw) if pythonw.exists() else sys.executable
+                else:
+                    python_exe = sys.executable
+                
+                subprocess.Popen(
+                    [python_exe, str(main_py), "--settings-only"],
+                    cwd=str(project_root),
+                    # On Windows, use CREATE_NO_WINDOW to avoid console flash
+                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
             
-            subprocess.Popen(
-                [python_exe, "main.py", "--settings-only"],
-                cwd=str(project_root),
-                # On Windows, use CREATE_NO_WINDOW to avoid console flash
-                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-            )
             logger.info("Settings GUI launched successfully")
         except Exception as e:
-            logger.error(f"Failed to open settings: {e}")
+            logger.error(f"Failed to open settings: {e}", exc_info=True)
     
     def _on_tray_quick_lock(self):
         """Handle Quick Lock click from tray icon (Windows only)."""
@@ -2780,9 +3109,24 @@ The AI changes have been applied via {shortcut}.
             except Exception:
                 pass
         
-        await self.app.updater.stop()
-        await self.app.stop()
-        await self.app.shutdown()
+        # Stop Telegram bot
+        try:
+            await self.app.updater.stop()
+            await self.app.stop()
+            await self.app.shutdown()
+        except Exception as e:
+            logger.warning(f"Error stopping bot app: {e}")
+        
+        # Ensure lock file is released
+        try:
+            import sys
+            from pathlib import Path
+            # Import the release function from main
+            # Since we're in a different module, we'll handle it via atexit
+            # which should already be registered
+        except Exception:
+            pass
+        
         logger.info("TeleCode bot stopped")
 
 
@@ -2796,7 +3140,16 @@ def create_bot_from_env() -> Optional[TeleCodeBot]:
         TeleCodeBot instance or None if configuration is invalid.
     """
     from dotenv import load_dotenv
-    load_dotenv()
+    from src.system_utils import get_user_data_dir
+    
+    # Load .env from user data directory first (for installed applications)
+    user_data_dir = get_user_data_dir()
+    env_path = user_data_dir / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+    else:
+        # Fallback to current directory (for development)
+        load_dotenv()
     
     token = None
     

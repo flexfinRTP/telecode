@@ -196,12 +196,12 @@ class UserPreferences:
         Initialize user preferences.
         
         Args:
-            storage_dir: Directory to store preferences (defaults to .telecode/)
+            storage_dir: Directory to store preferences (defaults to user data directory)
         """
         if storage_dir is None:
-            # Store in .telecode directory relative to project root
-            script_dir = Path(__file__).parent.parent
-            storage_dir = script_dir / ".telecode"
+            # Store in user data directory (works when installed in Program Files)
+            from src.system_utils import get_user_data_dir
+            storage_dir = get_user_data_dir()
         
         self.storage_dir = Path(storage_dir)
         self.prefs_file = self.storage_dir / "user_prefs.json"

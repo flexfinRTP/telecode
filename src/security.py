@@ -26,7 +26,7 @@ import time
 from pathlib import Path
 from functools import wraps
 from datetime import datetime
-from typing import Optional, Callable, Any, Dict
+from typing import Optional, Callable, Any, Dict, List
 from collections import defaultdict
 
 # Configure security logger
@@ -187,7 +187,8 @@ class SecuritySentinel:
         self,
         allowed_user_id: int,
         dev_root: str,
-        enable_audit_log: bool = True
+        enable_audit_log: bool = True,
+        allowed_roots: Optional[List[str]] = None
     ):
         """
         Initialize the Security Sentinel.
@@ -195,11 +196,28 @@ class SecuritySentinel:
         Args:
             allowed_user_id: The only Telegram user ID allowed to use the bot
             dev_root: The root directory for all file operations (the "jail")
+                      Also used as the current active sandbox
             enable_audit_log: Whether to log all operations for security audit
+            allowed_roots: Optional list of additional allowed root directories
+                          If provided, paths can be within any of these roots
         """
         self.allowed_user_id = allowed_user_id
         self.dev_root = Path(dev_root).resolve()
         self.enable_audit_log = enable_audit_log
+        
+        # Support multiple allowed roots for multi-sandbox feature
+        if allowed_roots:
+            self.allowed_roots = [Path(root).resolve() for root in allowed_roots]
+            # Ensure dev_root is in the list
+            if self.dev_root not in self.allowed_roots:
+                self.allowed_roots.append(self.dev_root)
+        else:
+            self.allowed_roots = [self.dev_root]
+        
+        # Validate all roots exist
+        for root in self.allowed_roots:
+            if not root.exists():
+                raise ValueError(f"Allowed root does not exist: {root}")
         
         # Compile blocked file patterns for performance
         self._blocked_patterns = [
@@ -217,7 +235,7 @@ class SecuritySentinel:
         if not self.dev_root.exists():
             raise ValueError(f"DEV_ROOT does not exist: {self.dev_root}")
         
-        logger.info(f"SecuritySentinel initialized. DEV_ROOT={self.dev_root}")
+        logger.info(f"SecuritySentinel initialized. DEV_ROOT={self.dev_root}, Allowed roots: {len(self.allowed_roots)}")
     
     def validate_user(self, user_id: int) -> bool:
         """
@@ -262,7 +280,7 @@ class SecuritySentinel:
     
     def validate_path(self, path: str) -> Path:
         """
-        Validate that a path is within the sandbox (DEV_ROOT).
+        Validate that a path is within one of the allowed sandbox roots.
         
         The Jail - Prevents path traversal attacks.
         
@@ -273,34 +291,38 @@ class SecuritySentinel:
             The resolved, validated Path object
             
         Raises:
-            PathTraversalError: If path escapes the sandbox
+            PathTraversalError: If path escapes all sandboxes
             SecurityError: If path matches a blocked pattern
         """
         # Resolve the path to absolute
         if os.path.isabs(path):
             target = Path(path).resolve()
         else:
+            # Try relative to current dev_root first
             target = (self.dev_root / path).resolve()
         
-        # Check if path is within DEV_ROOT using commonpath
-        try:
-            common = Path(os.path.commonpath([self.dev_root, target]))
-            if common != self.dev_root:
-                self._audit_log(
-                    "PATH_TRAVERSAL_BLOCKED",
-                    f"Blocked: {path} -> {target} (escapes {self.dev_root})"
-                )
-                raise PathTraversalError(
-                    f"Access denied. Path escapes sandbox: {path}"
-                )
-        except ValueError:
-            # Different drives on Windows
+        # Check if path is within any allowed root
+        path_valid = False
+        matched_root = None
+        
+        for allowed_root in self.allowed_roots:
+            try:
+                common = Path(os.path.commonpath([allowed_root, target]))
+                if common == allowed_root:
+                    path_valid = True
+                    matched_root = allowed_root
+                    break
+            except ValueError:
+                # Different drives on Windows - skip this root
+                continue
+        
+        if not path_valid:
             self._audit_log(
                 "PATH_TRAVERSAL_BLOCKED",
-                f"Blocked cross-drive access: {path}"
+                f"Blocked: {path} -> {target} (escapes all allowed roots)"
             )
             raise PathTraversalError(
-                f"Access denied. Cross-drive access not allowed: {path}"
+                f"Access denied. Path escapes sandbox: {path}"
             )
         
         # Check against blocked file patterns
@@ -366,8 +388,8 @@ class SecuritySentinel:
         """
         Write to the security audit log.
         
-        SEC-006: Audit log is written relative to script location,
-        not hardcoded path that could escape sandbox.
+        SEC-006: Audit log is written to user data directory,
+        not installation directory (works when installed in Program Files).
         """
         if not self.enable_audit_log:
             return
@@ -380,16 +402,13 @@ class SecuritySentinel:
         
         logger.warning(log_entry)
         
-        # SEC-006: Write to file in project directory, not arbitrary location
+        # SEC-006: Write to file in user data directory (user-writable location)
         try:
-            # Get the directory where this script is located
-            script_dir = Path(__file__).parent.parent
-            log_file = script_dir / "telecode_audit.log"
+            from src.system_utils import get_user_data_dir
             
-            # Validate log file is in expected location
-            if not str(log_file.resolve()).startswith(str(script_dir.resolve())):
-                logger.error("Audit log path validation failed")
-                return
+            # Use user data directory for audit log (works when installed in Program Files)
+            user_data_dir = get_user_data_dir()
+            log_file = user_data_dir / "telecode_audit.log"
             
             with open(log_file, "a", encoding="utf-8") as f:
                 f.write(log_entry + "\n")
@@ -530,21 +549,55 @@ def create_sentinel_from_env() -> Optional[SecuritySentinel]:
         SecuritySentinel instance or None if config is invalid
     """
     from dotenv import load_dotenv
-    load_dotenv()
+    from src.system_utils import get_user_data_dir
+    
+    # Load .env from user data directory first (for installed applications)
+    user_data_dir = get_user_data_dir()
+    env_path = user_data_dir / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+    else:
+        # Fallback to current directory (for development)
+        load_dotenv()
     
     user_id = os.getenv("ALLOWED_USER_ID")
     dev_root = os.getenv("DEV_ROOT")
     enable_audit = os.getenv("ENABLE_AUDIT_LOG", "true").lower() == "true"
     
-    if not user_id or not dev_root:
-        logger.error("Missing required config: ALLOWED_USER_ID and DEV_ROOT")
+    if not user_id:
+        logger.error("Missing required config: ALLOWED_USER_ID")
+        return None
+    
+    # Try to load sandbox config (supports multiple sandboxes)
+    from src.sandbox_config import get_sandbox_config
+    sandbox_config = get_sandbox_config()
+    allowed_roots = None
+    
+    if sandbox_config.sandboxes:
+        # Use sandbox config
+        current_sandbox = sandbox_config.get_current()
+        if current_sandbox:
+            dev_root = current_sandbox  # Use current sandbox as dev_root
+            # Get all allowed roots for validation
+            allowed_roots = sandbox_config.get_all()
+            logger.info(f"Loaded {len(allowed_roots)} sandbox directories from config")
+    elif dev_root:
+        # Fallback to single DEV_ROOT from .env
+        logger.info("Using single DEV_ROOT from .env (backward compatibility)")
+    else:
+        logger.error("Missing required config: DEV_ROOT or sandbox configuration")
+        return None
+    
+    if not dev_root:
+        logger.error("No valid sandbox directory found")
         return None
     
     try:
         return SecuritySentinel(
             allowed_user_id=int(user_id),
             dev_root=dev_root,
-            enable_audit_log=enable_audit
+            enable_audit_log=enable_audit,
+            allowed_roots=allowed_roots
         )
     except (ValueError, Exception) as e:
         logger.error(f"Failed to create SecuritySentinel: {e}")

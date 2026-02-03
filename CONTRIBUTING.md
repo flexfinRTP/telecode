@@ -1,5 +1,9 @@
 # Contributing to TeleCode
 
+<div align="center">
+  <img src="assets/telecode.png" alt="TeleCode Logo" width="150">
+</div>
+
 Thank you for your interest in contributing to TeleCode! This document provides guidelines for contributing.
 
 ---
@@ -217,7 +221,7 @@ TeleCode follows [Semantic Versioning](https://semver.org/):
 | Bug fixes, minor improvements | Patch | v0.1.0 → v0.1.1 |
 | New features | Minor | v0.1.x → v0.2.0 |
 
-Current version: **v0.1.10**
+Current version: **v0.1.13**
 
 ---
 

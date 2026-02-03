@@ -1,7 +1,12 @@
-# 🚀 TeleCode v0.1.10
+# 🚀 TeleCode v0.1.13
 
-**Voice-to-Code, From Anywhere**
+<div align="center">
+  <img src="assets/telecode.png" alt="TeleCode Logo" width="200">
+  
+  **Voice-to-Code, From Anywhere**
+</div>
 
+[![Website](https://img.shields.io/badge/Website-telecodebot.com-39ff14.svg)](https://telecodebot.com)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Security: Hardened](https://img.shields.io/badge/Security-Hardened-brightgreen.svg)](#security)
@@ -9,12 +14,14 @@
 [![Download](https://img.shields.io/badge/Download-Latest%20Release-blue.svg)](https://github.com/flexfinRTP/telecode/releases/latest)
 [![Cross-Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](#-download--install)
 
+**🌐 Website: [telecodebot.com](https://telecodebot.com)**
+
 Control Cursor AI from your phone via Telegram. **Voice-to-code** that works from anywhere — uses your existing Cursor subscription with **zero API costs**.
 
 > 🎤 **Speak your code changes** • 🌍 **Works from anywhere** • 💰 **No API fees** • 🔒 **Works even with laptop locked**
 
 > 🔒 **Security Hardened**: [Full security audit](docs/SECURITY_AUDIT.md) with token encryption, prompt injection defense, and rate limiting.
-> 🌍 **v0.1.10**: Full cross-platform support (Windows, macOS, Linux) with platform-specific headless modes
+> 🌍 **v0.1.13**: Agent button routing fixes, screenshot timing improvements, and enhanced multi-agent support!
 
 ---
 
@@ -24,9 +31,9 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 
 | Platform | Download | Size |
 |----------|----------|------|
-| 🪟 **Windows** | [**TeleCode_Setup_Windows.exe**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_Setup_v0.1.10_Windows.exe) | ~50 MB |
-| 🍎 **macOS** | [**TeleCode_macOS.dmg**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.10_macOS.dmg) | ~45 MB |
-| 🐧 **Linux** | [**TeleCode_Linux.tar.gz**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.10_Linux.tar.gz) | ~40 MB |
+| 🪟 **Windows** | [**TeleCode_Setup_Windows.exe**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_Setup_v0.1.13_Windows.exe) | ~50 MB |
+| 🍎 **macOS** | [**TeleCode_macOS.dmg**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.13_macOS.dmg) | ~45 MB |
+| 🐧 **Linux** | [**TeleCode_Linux.tar.gz**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.13_Linux.tar.gz) | ~40 MB |
 
 > 📦 **No Python required!** The installers include everything bundled.
 
@@ -35,7 +42,7 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 <details>
 <summary><b>🪟 Windows</b></summary>
 
-1. Download `TeleCode_Setup_v0.1.10_Windows.exe`
+1. Download `TeleCode_Setup_v0.1.13_Windows.exe`
 2. Run the installer (right-click → "Run as administrator" if needed)
 3. Follow the setup wizard
 4. Optional: Create TSCON shortcuts for screen lock while running (system tray → Secure Lock)
@@ -46,7 +53,7 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 <details>
 <summary><b>🍎 macOS</b></summary>
 
-1. Download `TeleCode_v0.1.10_macOS.dmg`
+1. Download `TeleCode_v0.1.13_macOS.dmg`
 2. Open the DMG file
 3. Drag TeleCode to your Applications folder
 4. First launch: Right-click → Open (to bypass Gatekeeper)
@@ -59,9 +66,9 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 
 ```bash
 # Download and extract
-wget https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.10_Linux.tar.gz
-tar -xzvf TeleCode_v0.1.10_Linux.tar.gz
-cd TeleCode_v0.1.10_Linux
+wget https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.13_Linux.tar.gz
+tar -xzvf TeleCode_v0.1.13_Linux.tar.gz
+cd TeleCode_v0.1.13_Linux
 
 # Install (adds to ~/.local/bin and creates .desktop entry)
 ./install.sh
@@ -242,7 +249,8 @@ TeleCode stores configuration in a `.env` file. You can configure via:
 ### Navigation
 | Command | Description |
 |---------|-------------|
-| `/cd [path]` | Change directory (shows Cursor status) |
+| `/sandbox` | Switch sandbox directory |
+| `/sandboxes` | List all sandbox directories |
 | `/ls [path]` | List files |
 | `/read [file]` | Read file contents |
 | `/pwd` | Show current path |
@@ -258,6 +266,12 @@ TeleCode stores configuration in a `.env` file. You can configure via:
 | Command | Description |
 |---------|-------------|
 | `/ai [prompt]` | Execute Cursor AI prompt |
+| `/ai accept` | Accept AI changes in Cursor (Ctrl+Enter) |
+| `/ai reject` | Reject AI changes in Cursor (Escape) |
+| `/ai continue [prompt]` | Continue with follow-up prompt |
+| `/ai stop` | Stop/clear current AI session |
+| `/ai status` | Check agent state and pending changes |
+| `/ai mode [agent\|chat]` | Switch prompt mode (Agent/Chat) |
 | `/model` | Select AI model (interactive menu) |
 | `/model [alias]` | Quick switch (`opus`, `sonnet`, `haiku`, `gemini`, `gpt`) |
 | `/models` | List all available models |
@@ -270,10 +284,15 @@ After every AI prompt, inline action buttons appear:
 
 | Button | Action |
 |--------|--------|
-| 📖 View Full Diff | Shows complete diff inline |
-| ✅ Keep All | Commits all changes (like Cursor's "Keep All") |
-| 🗑️ Undo All | Discards all changes with 2-step confirmation |
-| ▶️ Continue | Prompts for follow-up AI command |
+| 📊 Check | See files modified |
+| 📖 Diff | View changes |
+| ✅ Accept | Accept changes in Cursor (Ctrl+Enter) |
+| ❌ Reject | Reject changes in Cursor (Escape) |
+| ➡️ Continue | Continue AI with follow-up |
+| ⚙️ Mode | Switch Agent/Chat mode |
+| 🧹 Cleanup | Close old agent tabs |
+
+**Note:** Run button only appears when AI is waiting for approval (not on completion).
 
 ### System
 | Command | Description |
@@ -463,7 +482,8 @@ sha256sum TeleCode
 
 ## 🗺️ Roadmap
 
-- [ ] OCR: Screenshot Cursor output and extract text
+- [x] ~~OCR: Screenshot Cursor output and extract text~~ ✅ Done in v0.1.11
+- [x] ~~Custom domain: telecodebot.com~~ ✅ Done in v0.1.12
 - [ ] Multi-Repo: Switch between sandbox roots
 - [ ] Scheduled Tasks: Queue prompts for later execution
 - [ ] GitHub Actions: Trigger remote workflows
@@ -495,4 +515,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 **Made with ❤️ for developers who code from anywhere.**
 
 *Voice-to-code • Uses your existing Cursor plan • Zero API costs*
+
+🌐 **[telecodebot.com](https://telecodebot.com)**
 

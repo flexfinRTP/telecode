@@ -1,5 +1,9 @@
 # ⚡ TeleCode Quick Start Guide
 
+<div align="center">
+  <img src="assets/telecode.png" alt="TeleCode Logo" width="150">
+</div>
+
 Get TeleCode running in **30 seconds**.
 
 > 🎤 **Voice-to-code** from your phone • 💰 **Uses your Cursor plan** (no API costs) • 🌍 **Works from anywhere**
@@ -100,13 +104,22 @@ Hello world     → AI prompt!
 | Commit | `/commit Fix bug` |
 | Undo changes | `/revert CONFIRM` ⚠️ |
 | AI prompt | `/ai Refactor login` |
+| AI accept | `/ai accept` |
+| AI reject | `/ai reject` |
+| AI continue | `/ai continue [prompt]` |
+| AI stop | `/ai stop` |
+| AI status | `/ai status` |
+| AI mode | `/ai mode [agent|chat]` |
 | Select model | `/model` |
 | Quick model switch | `/model opus` or `/model haiku` |
 | List models | `/models` |
 | List files | `/ls` |
-| Change folder | `/cd myproject` |
+| Switch sandbox | `/sandbox` or `/sandboxes` |
+| Read file | `/read [file]` |
+| Current path | `/pwd` |
 | **New project** | `/create` |
-| **Open Cursor** | `/cursor open` |
+| **Open Cursor** | `/cursor` or `/cursor open` |
+| System info | `/info` |
 
 > **Note:** `/revert` requires `CONFIRM` argument to prevent accidents.
 
@@ -133,26 +146,33 @@ Choose which AI model powers your prompts:
 
 ## 📊 After AI Execution - Action Buttons
 
-After every AI prompt, you'll see a **changes preview** with action buttons:
+After every AI prompt, you'll see a **completion message** with action buttons:
 
 ```
-Bot: ✅ AI Execution Complete!
+Bot: ✅ Cursor AI Completed! (3 files, 45s)
 
-     📊 Changes Preview:
-     src/login.py | 25 +++++++++++++
-     1 file changed, 25 insertions(+)
+     🤖 Agent mode - Files auto-saved
      
-     [📖 View Full Diff]
-     [✅ Keep All] [🗑️ Undo All]
-     [▶️ Continue]
+     📁 src/login.py, src/auth.py, src/utils.py
+     
+     📝 Prompt: Add error handling
+     
+     [📊 Check] [📖 Diff] [✅ Accept]
+     [❌ Reject] [➡️ Continue]
+     [⚙️ Mode] [🧹 Cleanup]
 ```
 
 | Button | Action |
 |--------|--------|
-| 📖 View Full Diff | Shows complete diff inline |
-| ✅ Keep All | Commits all changes (like Cursor's "Keep All") |
-| 🗑️ Undo All | Discards all changes (with confirmation) |
-| ▶️ Continue | Prompts for follow-up AI command |
+| 📊 Check | See files modified |
+| 📖 Diff | View changes |
+| ✅ Accept | Accept changes in Cursor (Ctrl+Enter) |
+| ❌ Reject | Reject changes in Cursor (Escape) |
+| ➡️ Continue | Continue AI with follow-up |
+| ⚙️ Mode | Switch Agent/Chat mode |
+| 🧹 Cleanup | Close old agent tabs |
+
+**Note:** Run button only appears when AI is waiting for approval (not on completion).
 
 ---
 

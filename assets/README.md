@@ -8,8 +8,9 @@ Before building installers, you need to create these icon files:
 
 ### icon.ico (Windows)
 - Size: Multi-resolution ICO containing 16x16, 32x32, 48x48, 64x64, 128x128, 256x256
-- Format: ICO
+- Format: ICO (multi-resolution)
 - Used by: Windows EXE and installer
+- **Note**: All sizes are required for proper display at different DPI levels and contexts
 
 ### icon.icns (macOS)
 - Size: Multi-resolution ICNS containing 16x16 to 1024x1024
