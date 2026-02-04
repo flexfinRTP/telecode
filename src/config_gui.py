@@ -605,83 +605,208 @@ class ConfigurationGUI:
         audit_info_btn.pack(side="left", padx=(5, 0))
         
         # ==========================================
-        # TSCON Section (Windows Only)
+        # Lock PIN Section (Windows Only)
         # ==========================================
         if sys.platform == "win32":
-            tscon_group = tk.LabelFrame(
+            lockpin_group = tk.LabelFrame(
                 main_frame,
-                text=" 🔒 TSCON Session Lock (Advanced) ",
+                text=" 🔒 Lock PIN/Password (Windows) ",
                 font=("Tahoma", 8, "bold"),
                 bg=XP_COLORS["bg_groupbox"],
                 fg=XP_COLORS["text"],
                 padx=10,
                 pady=8
             )
-            tscon_group.pack(fill="x", pady=(0, 10))
+            lockpin_group.pack(fill="x", pady=(0, 10))
             
-            tscon_info = tk.Label(
-                tscon_group,
-                text="Lock your screen and code on the go! Your session stays active so you can\ncontrol Cursor via Telegram from anywhere. Use the System Tray icon for quick access!",
+            lockpin_info = tk.Label(
+                lockpin_group,
+                text="Set a PIN for secure display lock.\n"
+                     "When display turns off, PIN will be required on wake.\n"
+                     "💡 Tip: Use your Windows password for easy remembering!\n"
+                     "💡 Forgot PIN? Reset via Telegram: /pin set",
                 font=("Tahoma", 7),
                 fg="#666666",
                 bg=XP_COLORS["bg_groupbox"],
                 justify="left"
             )
-            tscon_info.pack(anchor="w")
+            lockpin_info.pack(anchor="w", pady=(0, 10))
             
-            # Note about system tray
-            tray_note = tk.Label(
-                tscon_group,
-                text="💡 TIP: Right-click the TeleCode tray icon (near clock) for Quick Lock & Secure Lock!",
-                font=("Tahoma", 7, "bold"),
-                fg=XP_COLORS["success"],
-                bg=XP_COLORS["bg_groupbox"]
-            )
-            tray_note.pack(anchor="w", pady=(5, 5))
+            # PIN status
+            try:
+                from .lock_pin_storage import get_lock_pin_storage
+                storage = get_lock_pin_storage()
+                pin = storage.retrieve_pin()
+                password = storage.retrieve_password()
+                
+                if pin:
+                    status_text = f"✅ PIN set ({'*' * (len(pin) - 2) + pin[-2:] if len(pin) > 2 else '****'})"
+                    status_color = XP_COLORS["success"]
+                elif password:
+                    status_text = "✅ Password set (Windows password)"
+                    status_color = XP_COLORS["success"]
+                else:
+                    status_text = "⚠️ Not set"
+                    status_color = "#CC6600"
+            except:
+                status_text = "❌ Error loading status"
+                status_color = "#CC0000"
             
-            # ---- Quick Lock ----
-            quick_frame = tk.Frame(tscon_group, bg=XP_COLORS["bg_groupbox"])
-            quick_frame.pack(fill="x", pady=(3, 3))
-            
-            quick_lock_btn = XPStyleButton(
-                quick_frame,
-                text="⚡ Quick Lock Now",
-                command=self._run_quick_lock
-            )
-            quick_lock_btn.pack(side="left")
-            
-            quick_info_btn = XPStyleButton(quick_frame, text=" i ", command=self._show_quick_lock_info, width=2)
-            quick_info_btn.pack(side="left", padx=(5, 0))
-            
-            tk.Label(
-                quick_frame,
-                text="Remote Desktop apps still work",
-                font=("Tahoma", 7),
-                fg="#666666",
-                bg=XP_COLORS["bg_groupbox"]
-            ).pack(side="left", padx=(10, 0))
-            
-            # ---- Option 3: Secure Lock ----
-            secure_frame = tk.Frame(tscon_group, bg=XP_COLORS["bg_groupbox"])
-            secure_frame.pack(fill="x", pady=(3, 3))
-            
-            secure_lock_btn = XPStyleButton(
-                secure_frame,
-                text="🛡️ Secure Lock Now",
-                command=self._run_secure_lock
-            )
-            secure_lock_btn.pack(side="left")
-            
-            secure_info_btn = XPStyleButton(secure_frame, text=" i ", command=self._show_secure_lock_info, width=2)
-            secure_info_btn.pack(side="left", padx=(5, 0))
+            status_frame = tk.Frame(lockpin_group, bg=XP_COLORS["bg_groupbox"])
+            status_frame.pack(fill="x", pady=(0, 10))
             
             tk.Label(
-                secure_frame,
-                text="⭐ Best — blocks Remote Desktop apps, 30min auto-lock",
-                font=("Tahoma", 7, "bold"),
-                fg=XP_COLORS["success"],
-                bg=XP_COLORS["bg_groupbox"]
-            ).pack(side="left", padx=(10, 0))
+                status_frame,
+                text="Status:",
+                font=("Tahoma", 8),
+                bg=XP_COLORS["bg_groupbox"],
+                fg=XP_COLORS["text"]
+            ).pack(side="left")
+            
+            tk.Label(
+                status_frame,
+                text=status_text,
+                font=("Tahoma", 8, "bold"),
+                bg=XP_COLORS["bg_groupbox"],
+                fg=status_color
+            ).pack(side="left", padx=(5, 0))
+            
+            # PIN input frame
+            pin_frame = tk.Frame(lockpin_group, bg=XP_COLORS["bg_groupbox"])
+            pin_frame.pack(fill="x", pady=(0, 5))
+            
+            tk.Label(
+                pin_frame,
+                text="PIN:",
+                font=("Tahoma", 8),
+                bg=XP_COLORS["bg_groupbox"],
+                fg=XP_COLORS["text"],
+                width=8,
+                anchor="w"
+            ).pack(side="left")
+            
+            self.pin_var = tk.StringVar()
+            pin_entry = XPStyleEntry(
+                pin_frame,
+                textvariable=self.pin_var,
+                width=20,
+                show="*"
+            )
+            pin_entry.pack(side="left", padx=(5, 5))
+            
+            def set_pin():
+                pin = self.pin_var.get().strip()
+                if not pin:
+                    self._set_status("❌ Please enter a PIN", "error")
+                    return
+                if len(pin) < 4:
+                    self._set_status("❌ PIN must be at least 4 characters", "error")
+                    return
+                
+                try:
+                    from .lock_pin_storage import get_lock_pin_storage
+                    from .custom_lock import set_lock_pin
+                    storage = get_lock_pin_storage()
+                    success, msg = storage.store_pin(pin)
+                    if success:
+                        set_lock_pin(pin)
+                        self._set_status(f"✅ PIN set successfully!", "success")
+                        self.pin_var.set("")
+                        # Refresh status
+                        self._create_widgets()
+                    else:
+                        self._set_status(f"❌ Failed: {msg}", "error")
+                except Exception as e:
+                    self._set_status(f"❌ Error: {e}", "error")
+            
+            set_pin_btn = XPStyleButton(
+                pin_frame,
+                text="Set PIN",
+                command=set_pin,
+                width=10
+            )
+            set_pin_btn.pack(side="left", padx=(0, 5))
+            
+            def view_pin():
+                try:
+                    from .lock_pin_storage import get_lock_pin_storage
+                    storage = get_lock_pin_storage()
+                    pin = storage.retrieve_pin()
+                    password = storage.retrieve_password()
+                    
+                    if pin:
+                        masked = "*" * (len(pin) - 2) + pin[-2:] if len(pin) > 2 else "****"
+                        self._set_status(f"🔒 Current PIN: {masked}", "info")
+                    elif password:
+                        self._set_status("🔒 Password set (Windows password)", "info")
+                    else:
+                        self._set_status("⚠️ No PIN/password set", "info")
+                except Exception as e:
+                    self._set_status(f"❌ Error: {e}", "error")
+            
+            view_pin_btn = XPStyleButton(
+                pin_frame,
+                text="View",
+                command=view_pin,
+                width=8
+            )
+            view_pin_btn.pack(side="left")
+            
+            # Password input frame
+            password_frame = tk.Frame(lockpin_group, bg=XP_COLORS["bg_groupbox"])
+            password_frame.pack(fill="x")
+            
+            tk.Label(
+                password_frame,
+                text="Password:",
+                font=("Tahoma", 8),
+                bg=XP_COLORS["bg_groupbox"],
+                fg=XP_COLORS["text"],
+                width=8,
+                anchor="w"
+            ).pack(side="left")
+            
+            self.password_var = tk.StringVar()
+            password_entry = XPStyleEntry(
+                password_frame,
+                textvariable=self.password_var,
+                width=20,
+                show="*"
+            )
+            password_entry.pack(side="left", padx=(5, 5))
+            
+            def set_password():
+                password = self.password_var.get().strip()
+                if not password:
+                    self._set_status("❌ Please enter a password", "error")
+                    return
+                if len(password) < 4:
+                    self._set_status("❌ Password must be at least 4 characters", "error")
+                    return
+                
+                try:
+                    from .lock_pin_storage import get_lock_pin_storage
+                    from .custom_lock import set_lock_password
+                    storage = get_lock_pin_storage()
+                    success, msg = storage.store_password(password)
+                    if success:
+                        set_lock_password(password)
+                        self._set_status("✅ Password set successfully! (Windows password)", "success")
+                        self.password_var.set("")
+                        # Refresh status
+                        self._create_widgets()
+                    else:
+                        self._set_status(f"❌ Failed: {msg}", "error")
+                except Exception as e:
+                    self._set_status(f"❌ Error: {e}", "error")
+            
+            set_password_btn = XPStyleButton(
+                password_frame,
+                text="Set Password",
+                command=set_password,
+                width=12
+            )
+            set_password_btn.pack(side="left")
         
         # ==========================================
         # Virtual Display Section (Linux Only)
@@ -700,7 +825,7 @@ class ConfigurationGUI:
             
             vdisplay_info = tk.Label(
                 vdisplay_group,
-                text="Run TeleCode headless with a virtual display (Xvfb). This allows GUI automation\neven without a physical monitor — the Linux equivalent of Windows TSCON.",
+                text="Run TeleCode headless with a virtual display (Xvfb). This allows GUI automation\neven without a physical monitor — the Linux equivalent of Windows Screen Lock.",
                 font=("Tahoma", 7),
                 fg="#666666",
                 bg=XP_COLORS["bg_groupbox"],
@@ -1248,7 +1373,7 @@ DEFAULT_MODEL={selected_model_alias}
                     "Right-click the tray icon to:\n"
                     "• View status\n"
                     "• Open settings\n"
-                    "• Lock screen (TSCON)\n"
+                    "• Turn off display (Virtual Display)\n"
                     "• Stop TeleCode"
                 )
                 self.root.destroy()
@@ -1322,208 +1447,6 @@ DEFAULT_MODEL={selected_model_alias}
             "• Detect if someone else used your bot\n"
             "• Debug issues"
         )
-    
-    def _show_quick_lock_info(self):
-        """Show info about Quick Lock mode."""
-        messagebox.showinfo(
-            "Quick Lock",
-            "⚡ QUICK LOCK\n\n"
-            "Screen goes black but TeleCode keeps running.\n\n"
-            "STILL WORKS:\n"
-            "✓ TeleCode (all Telegram commands)\n"
-            "✓ Cursor AI (code changes)\n"
-            "✓ Voice messages\n"
-            "✓ Remote Desktop apps (RDP, TeamViewer, AnyDesk)\n\n"
-            "USE WHEN:\n"
-            "• At home on trusted network\n"
-            "• You want to use a Remote Desktop app later\n\n"
-            "TO UNLOCK: Press any key → enter password"
-        )
-    
-    def _show_secure_lock_info(self):
-        """Show info about Secure Lock mode."""
-        messagebox.showinfo(
-            "Secure Lock",
-            "🛡️ SECURE LOCK (Recommended)\n\n"
-            "Screen goes black. Remote Desktop apps blocked.\n\n"
-            "STILL WORKS:\n"
-            "✓ TeleCode (all Telegram commands)\n"
-            "✓ Cursor AI (code changes)\n"
-            "✓ Voice messages\n\n"
-            "BLOCKED:\n"
-            "✗ Remote Desktop apps (RDP, TeamViewer, AnyDesk)\n"
-            "✗ Must be physically at PC to unlock\n\n"
-            "EXTRA SAFETY:\n"
-            "• Auto-locks after 30 minutes\n"
-            "• All actions logged\n\n"
-            "USE WHEN:\n"
-            "• In public (cafe, office, coworking)\n"
-            "• You don't need Remote Desktop apps\n\n"
-            "TO UNLOCK: Press any key → enter password"
-        )
-    
-    def _run_quick_lock(self):
-        """Run Quick Lock (standard TSCON) - requests UAC elevation if needed."""
-        try:
-            from .tscon_helper import TSCONManager
-            manager = TSCONManager()
-            
-            confirm = messagebox.askyesno(
-                "⚡ Quick Lock",
-                "This will disconnect your display.\n\n"
-                "⚠️ Note: Remote Desktop stays ENABLED.\n"
-                "Someone could still connect to your PC remotely.\n\n"
-                "You will be prompted for Administrator access.\n\n"
-                "Proceed with Quick Lock?",
-                icon="warning"
-            )
-            
-            if confirm:
-                if manager.is_admin:
-                    # Already admin, run directly
-                    success, message = manager.lock_session()
-                    if not success:
-                        messagebox.showerror("Error", message)
-                else:
-                    # Request UAC elevation
-                    self._run_elevated_lock(secure_mode=False)
-        except Exception as e:
-            messagebox.showerror("Error", f"Quick Lock failed: {e}")
-    
-    def _run_secure_lock(self):
-        """Run Secure Lock (TSCON with remote access blocked + timeout) - requests UAC elevation if needed."""
-        try:
-            from .tscon_helper import TSCONManager
-            manager = TSCONManager()
-            
-            confirm = messagebox.askyesno(
-                "🛡️ Secure Lock",
-                "This will:\n"
-                "• Disconnect your display\n"
-                "• DISABLE Remote Desktop\n"
-                "• Auto-lock after 30 minutes\n\n"
-                "Security features enabled:\n"
-                "✓ Remote connections blocked\n"
-                "✓ Physical access required to reconnect\n"
-                "✓ Automatic timeout protection\n\n"
-                "You will be prompted for Administrator access.\n\n"
-                "Proceed with Secure Lock?",
-                icon="warning"
-            )
-            
-            if confirm:
-                if manager.is_admin:
-                    # Already admin, run directly
-                    success, message = manager.lock_session_secure(watchdog_minutes=30)
-                    if not success:
-                        messagebox.showerror("Error", message)
-                else:
-                    # Request UAC elevation
-                    self._run_elevated_lock(secure_mode=True)
-        except Exception as e:
-            messagebox.showerror("Error", f"Secure Lock failed: {e}")
-    
-    def _run_elevated_lock(self, secure_mode: bool = False):
-        """
-        Run TSCON lock with UAC elevation prompt.
-        
-        Uses ShellExecuteW with 'runas' verb to request elevation.
-        """
-        import ctypes
-        from pathlib import Path
-        
-        if sys.platform != "win32":
-            messagebox.showwarning("Not Available", "This feature is only available on Windows.")
-            return
-        
-        try:
-            # Find the appropriate BAT file
-            project_root = Path(__file__).parent.parent
-            
-            if secure_mode:
-                script_path = project_root / "tscon_secure_lock.bat"
-            else:
-                script_path = project_root / "tscon_lock.bat"
-            
-            if script_path.exists():
-                # Run the BAT file with elevation
-                result = ctypes.windll.shell32.ShellExecuteW(
-                    None,          # hwnd
-                    "runas",       # verb (run as admin)
-                    str(script_path),  # file
-                    None,          # parameters
-                    str(project_root),  # directory
-                    1              # show command (SW_SHOWNORMAL)
-                )
-                
-                if result <= 32:
-                    messagebox.showerror("Error", f"Failed to request administrator access (code: {result})")
-            else:
-                # Fallback: run Python with tscon_helper directly
-                python_exe = sys.executable
-                tscon_module = str(project_root / "src" / "tscon_helper.py")
-                
-                params = f'"{tscon_module}" --lock'
-                if secure_mode:
-                    params += " --secure"
-                
-                result = ctypes.windll.shell32.ShellExecuteW(
-                    None,
-                    "runas",
-                    python_exe,
-                    params,
-                    str(project_root),
-                    1
-                )
-                
-                if result <= 32:
-                    messagebox.showerror("Error", f"Failed to request administrator access (code: {result})")
-                    
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to run elevated lock: {e}")
-    
-    def _show_tscon_help(self):
-        """Show TSCON help dialog."""
-        help_text = """🔒 TSCON - Keep Session Active While "Locked"
-
-WHAT IT DOES:
-Disconnects your screen from Windows while keeping
-everything running in memory.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🛡️ SECURE MODE (Recommended)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✓ Disables Remote Desktop
-✓ Auto-locks after 30 minutes
-✓ Only physical access can reconnect
-✓ All events logged to audit file
-
-⚡ STANDARD MODE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Quick disconnect
-• Remote access stays enabled
-• No timeout protection
-• Less secure but simpler
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-HOW TO USE:
-1. Click "Create Shortcuts"
-2. When leaving your laptop:
-   - Right-click TeleCode_SecureLock.bat
-   - Select "Run as administrator"
-3. Screen goes black
-4. Control via Telegram!
-
-TO RECONNECT:
-• Press any key or move mouse
-• Enter your Windows password
-
-💡 TIP: Use Secure Mode unless you specifically
-need Remote Desktop access while away.
-"""
-        messagebox.showinfo("TSCON Help", help_text)
     
     def run(self):
         """Start the GUI event loop."""

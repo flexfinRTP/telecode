@@ -171,13 +171,13 @@ telecode/
 │   ├── system_utils.py    # OS utilities
 │   ├── token_vault.py     # Encrypted token storage
 │   ├── tray_icon.py       # System tray icon
-│   ├── tscon_helper.py    # Windows TSCON lock
+│   ├── virtual_display_helper.py    # Windows virtual display (turn off monitor)
 │   └── voice_processor.py # Voice transcription
 ├── docs/
 │   ├── COMMANDS.md        # Command reference
 │   ├── SECURITY.md        # Security overview
 │   ├── SECURITY_AUDIT.md  # Full security audit
-│   └── TSCON.md           # Windows headless mode
+│   └── VirtualDisplay.md      # Windows headless mode
 ├── build/                 # Build scripts for all platforms
 ├── tests/                 # Test files
 ├── main.py                # Entry point

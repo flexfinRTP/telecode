@@ -283,6 +283,9 @@ class TeleCodeBot:
             CommandHandler("model", self._cmd_model),
             CommandHandler("models", self._cmd_models),
             
+            # Lock PIN management commands
+            CommandHandler("pin", self._cmd_pin),
+            
             # Model selection callback handler
             CallbackQueryHandler(self._cmd_model_callback, pattern="^model_"),
             
@@ -448,7 +451,8 @@ class TeleCodeBot:
         """Welcome message and quick status."""
         self.sentinel.log_command(update.effective_user.id, "/start")
         
-        lock_status = "🔒 Locked" if ScreenLockDetector.is_locked() else "🔓 Unlocked"
+        # Virtual Display mode - monitor off, session active (not locked)
+        lock_status = "🖥️ Display Off"
         
         # Get user's selected model
         user_id = update.effective_user.id
@@ -521,6 +525,11 @@ Use /model to change AI model.
   /info - System status
   /help - This message
 
+**Lock PIN (Windows):** 🔒
+  /pin - View current PIN
+  /pin set <pin> - Set PIN (can use Windows password)
+  💡 Tip: Use Windows password for easy remembering!
+
 📂 **Current Sandbox:** `{self.sentinel.dev_root.name}`
 🤖 **Model:** `{current_model.alias}` ({current_model.display_name})
 """
@@ -546,6 +555,88 @@ Use /model to change AI model.
         info += f"\n\n{self.voice.get_status()}"
         
         await update.message.reply_text(info, parse_mode="Markdown")
+    
+    @require_auth
+    async def _cmd_pin(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /pin command - view or set lock PIN."""
+        if not sys.platform == "win32":
+            await update.message.reply_text(
+                "❌ Lock PIN is only available on Windows.\n\n"
+                "Use `/pin` to view current PIN\n"
+                "Use `/pin set <pin>` to set a new PIN"
+            )
+            return
+        
+        try:
+            from .lock_pin_storage import get_lock_pin_storage
+            from .custom_lock import set_lock_pin
+            
+            storage = get_lock_pin_storage()
+            args = context.args or []
+            
+            if not args:
+                # View PIN - show masked
+                pin = storage.retrieve_pin()
+                password = storage.retrieve_password()
+                
+                if pin:
+                    masked = "*" * (len(pin) - 2) + pin[-2:] if len(pin) > 2 else "****"
+                    msg = f"🔒 **Current PIN:** `{masked}`"
+                elif password:
+                    msg = "🔒 **Password set** (Windows password)\n\n"
+                    msg += "💡 Password is stored securely and cannot be displayed."
+                else:
+                    msg = "🔒 **No PIN set**\n\n"
+                    msg += "Set one with: `/pin set <pin>`\n\n"
+                    msg += "💡 **Tip:** Use your Windows password for easy remembering!"
+                
+                await update.message.reply_text(msg, parse_mode="Markdown")
+                return
+            
+            command = args[0].lower()
+            
+            if command == "set":
+                if len(args) < 2:
+                    await update.message.reply_text(
+                        "❌ Usage: `/pin set <pin>`\n\n"
+                        "Example: `/pin set 1234`\n\n"
+                        "💡 **Tip:** Use your Windows password for easy remembering!"
+                    )
+                    return
+                
+                # Set PIN (can be password too)
+                pin = args[1]
+                
+                if len(pin) < 4:
+                    await update.message.reply_text(
+                        "❌ PIN must be at least 4 characters.\n\n"
+                        "Example: `/pin set 1234`"
+                    )
+                    return
+                
+                # Store as PIN (user can use Windows password as PIN)
+                success, message = storage.store_pin(pin)
+                
+                if success:
+                    set_lock_pin(pin)
+                    await update.message.reply_text(
+                        f"✅ **PIN set successfully!**\n\n"
+                        f"Your PIN is now stored securely.\n"
+                        f"It will be required when unlocking the display.\n\n"
+                        f"💡 **Tip:** You can use your Windows password as the PIN!"
+                    )
+                else:
+                    await update.message.reply_text(f"❌ Failed to set PIN: {message}")
+            else:
+                await update.message.reply_text(
+                    "❌ Unknown command. Use:\n"
+                    "• `/pin` - View current PIN\n"
+                    "• `/pin set <pin>` - Set PIN"
+                )
+                
+        except Exception as e:
+            logger.error(f"PIN command failed: {e}", exc_info=True)
+            await update.message.reply_text(f"❌ Error: {e}")
     
     # ==========================================
     # Git Commands
@@ -2501,7 +2592,16 @@ The AI changes have been applied via {shortcut}.
             # Cleanup old agent tabs
             self.sentinel.log_command(user_id, "/ai cleanup (button)")
             
-            result = agent.cleanup_agents(max_agents=5)
+            # Check if cleanup is needed and send status message
+            max_agents = 5
+            if agent.session.agent_count > max_agents:
+                agents_to_close = agent.session.agent_count - max_agents
+                await query.message.reply_text(
+                    f"🔄 Closing {agents_to_close} old agent tabs...",
+                    parse_mode="Markdown"
+                )
+            
+            result = agent.cleanup_agents(max_agents=max_agents)
             
             if result.success:
                 data = result.data or {}
@@ -2686,7 +2786,7 @@ The AI changes have been applied via {shortcut}.
             
             if result.success:
                 agent_info = f" (agent tab {agent_id + 1})" if agent_id is not None else ""
-                message = f"🛑 **Generation Stopped!**{agent_info}\n\n{result.message}"
+                message = f"🛑 **Generation Stopped!**{agent_info}\n\n⏳ Please wait for the **AI Completed** message to see the final results of this prompt."
             else:
                 message = f"❌ **Failed to stop:** {result.error or result.message}"
             
@@ -2910,8 +3010,7 @@ The AI changes have been applied via {shortcut}.
             from .tray_icon import start_tray, get_tray
             self.tray = start_tray(
                 on_settings=self._on_tray_settings,
-                on_quick_lock=self._on_tray_quick_lock,
-                on_secure_lock=self._on_tray_secure_lock,
+                on_lock_screen=self._on_tray_lock_screen,
                 on_virtual_display=self._on_tray_virtual_display,
                 on_stop=self._request_stop
             )
@@ -2999,15 +3098,46 @@ The AI changes have been applied via {shortcut}.
         except Exception as e:
             logger.error(f"Failed to open settings: {e}", exc_info=True)
     
-    def _on_tray_quick_lock(self):
-        """Handle Quick Lock click from tray icon (Windows only)."""
-        logger.info("Quick Lock requested from system tray")
-        self._run_elevated_lock(secure_mode=False)
-    
-    def _on_tray_secure_lock(self):
-        """Handle Secure Lock click from tray icon (Windows only)."""
-        logger.info("Secure Lock requested from system tray")
-        self._run_elevated_lock(secure_mode=True)
+    def _on_tray_lock_screen(self):
+        """Handle Turn Off Display click from tray icon (Windows only)."""
+        logger.info("Turn Off Display requested from system tray")
+        try:
+            from .virtual_display_helper import turn_off_display_safe
+            from .custom_lock import is_locked, deactivate_lock, activate_lock
+            
+            # Check if already locked - if so, unlock instead
+            if is_locked():
+                logger.info("Display is locked - unlocking...")
+                deactivate_lock()
+                # Update tray icon state
+                if self.tray:
+                    self.tray.set_screen_locked(False)
+                return
+            
+            # Define unlock callback to update tray icon
+            def on_unlock():
+                if self.tray:
+                    self.tray.set_screen_locked(False)
+                logger.info("Lock unlocked - tray icon updated")
+            
+            # Define unlock callback to update tray icon
+            def on_unlock():
+                if self.tray:
+                    self.tray.set_screen_locked(False)
+                logger.info("Lock unlocked - tray icon updated")
+            
+            # Use secure mode by default (password required on wake)
+            # Pass unlock callback so tray icon updates when user unlocks
+            success, message = turn_off_display_safe(secure=True, on_unlock=on_unlock)
+            if success:
+                logger.info(f"Display turned off with secure lock: {message}")
+                # Update tray icon state
+                if self.tray:
+                    self.tray.set_screen_locked(True)
+            else:
+                logger.error(f"Failed to turn off display: {message}")
+        except Exception as e:
+            logger.error(f"Failed to turn off display: {e}", exc_info=True)
     
     def _on_tray_virtual_display(self, start: bool):
         """Handle Virtual Display toggle from tray icon (Linux only)."""
@@ -3037,64 +3167,6 @@ The AI changes have been applied via {shortcut}.
                     self.tray.set_virtual_display_status(False)
         else:
             logger.warning("Virtual display is only available on Linux")
-    
-    def _run_elevated_lock(self, secure_mode: bool = False):
-        """
-        Run TSCON lock with UAC elevation prompt.
-        
-        Uses ShellExecuteW with 'runas' verb to request elevation.
-        """
-        if sys.platform != "win32":
-            logger.warning("TSCON lock is only available on Windows")
-            return
-        
-        try:
-            import ctypes
-            
-            project_root = Path(__file__).parent.parent
-            
-            # Try BAT file first
-            if secure_mode:
-                script_path = project_root / "tscon_secure_lock.bat"
-            else:
-                script_path = project_root / "tscon_lock.bat"
-            
-            if script_path.exists():
-                # Run the BAT file with elevation
-                result = ctypes.windll.shell32.ShellExecuteW(
-                    None,          # hwnd
-                    "runas",       # verb (run as admin)
-                    str(script_path),  # file
-                    None,          # parameters
-                    str(project_root),  # directory
-                    1              # show command (SW_SHOWNORMAL)
-                )
-                
-                if result <= 32:
-                    logger.error(f"ShellExecute failed with code {result}")
-            else:
-                # Fallback: run tscon_helper.py directly with elevation
-                python_exe = sys.executable
-                tscon_module = project_root / "src" / "tscon_helper.py"
-                
-                params = f'"{tscon_module}" --lock'
-                if secure_mode:
-                    params += " --secure"
-                
-                result = ctypes.windll.shell32.ShellExecuteW(
-                    None,
-                    "runas",
-                    python_exe,
-                    params,
-                    str(project_root),
-                    1
-                )
-                
-                if result <= 32:
-                    logger.error(f"ShellExecute failed with code {result}")
-                    
-        except Exception as e:
-            logger.error(f"Elevated lock failed: {e}")
     
     async def stop(self):
         """Stop the bot gracefully."""

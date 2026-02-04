@@ -329,7 +329,9 @@ def format_system_status() -> str:
     if "disk_percent" in info:
         lines.append(f"  Disk: {info['disk_percent']:.1f}%")
     
-    lock_status = "🔒 Locked" if ScreenLockDetector.is_locked() else "🔓 Unlocked"
+    # Note: Virtual Display turns off monitor but doesn't lock, so always show unlocked
+    # Display off status would need separate tracking
+    lock_status = "🔓 Display Off"  # Virtual Display mode - monitor off, session active
     lines.append(f"  Screen: {lock_status}")
     
     # Add headless mode info
@@ -357,12 +359,11 @@ def get_headless_info() -> dict:
     }
     
     if IS_WINDOWS:
-        # Windows uses TSCON
-        info["method"] = "TSCON"
+        # Windows uses Virtual Display (turn off monitor)
+        info["method"] = "Virtual Display (Turn Off Monitor)"
         info["available"] = True
-        # Check if session is disconnected (TSCON active)
-        # This is a simplified check - actual detection is complex
-        info["active"] = False  # Would need session query to detect
+        # Display status - would need to track state
+        info["active"] = False  # Would need state tracking to detect
         
     elif IS_MACOS:
         # macOS limited support

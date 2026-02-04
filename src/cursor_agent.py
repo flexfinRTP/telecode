@@ -6,7 +6,7 @@ Automated integration layer for Cursor IDE AI control.
 
 This module SENDS prompts directly to Cursor Composer via
 keyboard automation. Works cross-platform:
-- Windows: TSCON locked sessions
+- Windows: Virtual display (monitor off, session active)
 - macOS: Virtual display or caffeinate
 - Linux: Xvfb virtual framebuffer
 
@@ -177,7 +177,7 @@ class WindowManager:
     
     Handles finding, focusing, and interacting with Cursor windows.
     Platform support:
-    - Windows: Win32 API (works with TSCON locked sessions)
+    - Windows: Win32 API (works with virtual display - monitor off, session active)
     - macOS: AppleScript
     - Linux: xdotool/wmctrl
     """
@@ -496,7 +496,7 @@ class CursorAgentBridge:
     
     SENDS prompts directly to Cursor Composer via keyboard automation.
     Cross-platform support:
-    - Windows: Works with TSCON locked sessions
+    - Windows: Works with virtual display (monitor off, session active)
     - macOS: Works with caffeinate or virtual display
     - Linux: Works with Xvfb virtual display
     """
@@ -1100,7 +1100,7 @@ class CursorAgentBridge:
         4. Pastes and sends the prompt
         5. Updates session state
         
-        Works with TSCON locked sessions on Windows!
+        Works with virtual display on Windows (monitor off, pyautogui works)!
         
         MODES:
         - agent: Auto-saves files to disk (SAFEST - won't lose work)
@@ -2611,7 +2611,7 @@ class CursorAgentBridge:
             
             return AgentResult(
                 success=True,
-                message=f"🛑 Generation stopped! ({shortcut_display})",
+                message=f"Stopped via {shortcut_display}",
                 data={
                     "action": "stop",
                     "method": shortcut_display,
@@ -3048,7 +3048,7 @@ class VirtualDisplayManager:
     Uses pyvirtualdisplay (Xvfb wrapper) to create a virtual X server
     that allows pyautogui to work even when no physical display is attached.
     
-    Similar to Windows TSCON - keeps GUI applications running without
+    Similar to Windows Virtual Display - keeps GUI applications running without
     a physical monitor.
     """
     
@@ -3161,15 +3161,15 @@ def start_virtual_display() -> bool:
     """
     Start virtual display for headless operation.
     
-    This is the Linux equivalent of Windows TSCON - allows GUI automation
+    This is the Linux equivalent of Windows Virtual Display - allows GUI automation
     to work without a physical monitor.
     
     Returns:
         True if started successfully (or already running/not needed)
     """
     if IS_WINDOWS:
-        # Windows uses TSCON, not virtual display
-        logger.info("Windows detected - use TSCON for headless operation")
+        # Windows uses Virtual Display (turn off monitor), not Xvfb
+        logger.info("Windows detected - use Virtual Display for headless operation")
         return True
     
     if IS_MACOS:
@@ -3206,7 +3206,7 @@ def get_platform_info() -> Dict[str, Any]:
     
     if IS_WINDOWS:
         info.update({
-            "headless_method": "TSCON",
+            "headless_method": "Virtual Display",
             "windows_api_available": WINDOWS_API_AVAILABLE,
             "headless_available": True,
         })

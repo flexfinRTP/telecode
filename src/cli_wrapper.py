@@ -223,9 +223,141 @@ class CLIWrapper:
         """Pull latest changes from remote."""
         return self._run_command(["git", "pull"])
     
+    def _get_current_branch(self) -> Optional[str]:
+        """
+        Get the current git branch name.
+        
+        Returns:
+            Branch name or None if not in a git repo or error
+        """
+        result = self._run_command(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        if result.success and result.stdout.strip():
+            branch = result.stdout.strip()
+            # Filter out HEAD if detached
+            if branch != "HEAD":
+                return branch
+        return None
+    
+    def _get_remotes(self) -> list[str]:
+        """
+        Get list of available git remotes.
+        
+        Returns:
+            List of remote names (e.g., ['origin', 'upstream'])
+        """
+        result = self._run_command(["git", "remote"])
+        if result.success and result.stdout.strip():
+            remotes = [r.strip() for r in result.stdout.strip().split('\n') if r.strip()]
+            return remotes
+        return []
+    
+    def _get_default_remote(self) -> Optional[str]:
+        """
+        Get the default remote for pushing.
+        
+        Prefers 'origin', falls back to first available remote.
+        
+        Returns:
+            Remote name or None if no remotes available
+        """
+        remotes = self._get_remotes()
+        if not remotes:
+            return None
+        
+        # Prefer 'origin' if available
+        if 'origin' in remotes:
+            return 'origin'
+        
+        # Fall back to first remote
+        return remotes[0]
+    
     def git_push(self) -> CommandResult:
-        """Push committed changes to remote."""
-        return self._run_command(["git", "push"])
+        """
+        Push committed changes to remote.
+        
+        Handles branches without upstream by:
+        1. First trying 'git push' (works if upstream is set)
+        2. If that fails with "no upstream branch", detecting current branch and remote
+        3. Pushing to default remote (origin) with current branch name
+        
+        This covers common scenarios:
+        - Branch with upstream set: works normally
+        - Branch without upstream: auto-detects and pushes to origin/branch
+        - Different remote names: tries origin first, then first available
+        """
+        # First, try standard git push (works if upstream is configured)
+        result = self._run_command(["git", "push"])
+        
+        # If successful, we're done
+        if result.success:
+            return result
+        
+        # Check if the error is about missing upstream branch
+        error_output = result.stderr.lower() if result.stderr else ""
+        stdout_output = result.stdout.lower() if result.stdout else ""
+        combined_output = (error_output + " " + stdout_output).lower()
+        
+        has_no_upstream = (
+            "no upstream branch" in combined_output or
+            "has no upstream branch" in combined_output or
+            "fatal: the current branch" in combined_output and "has no upstream branch" in combined_output
+        )
+        
+        if not has_no_upstream:
+            # Different error - return as-is
+            return result
+        
+        # No upstream branch detected - try to push with explicit remote and branch
+        logger.info("No upstream branch detected, attempting to detect branch and remote...")
+        
+        current_branch = self._get_current_branch()
+        if not current_branch:
+            return CommandResult(
+                success=False,
+                stdout=result.stdout,
+                stderr=f"{result.stderr}\n\nCould not determine current branch name.",
+                return_code=result.return_code,
+                command="git push"
+            )
+        
+        default_remote = self._get_default_remote()
+        if not default_remote:
+            return CommandResult(
+                success=False,
+                stdout=result.stdout,
+                stderr=f"{result.stderr}\n\nNo git remotes configured. Please add a remote first:\n  git remote add origin <url>",
+                return_code=result.return_code,
+                command="git push"
+            )
+        
+        # Sanitize branch name for safety
+        safe_branch = "".join(c for c in current_branch if c.isalnum() or c in "-_/.")
+        if not safe_branch or safe_branch != current_branch:
+            return CommandResult(
+                success=False,
+                stdout=result.stdout,
+                stderr=f"{result.stderr}\n\nInvalid branch name detected: {current_branch}",
+                return_code=result.return_code,
+                command="git push"
+            )
+        
+        # Try pushing to remote/branch explicitly
+        logger.info(f"Pushing {current_branch} to {default_remote}/{current_branch}...")
+        push_result = self._run_command(["git", "push", "-u", default_remote, current_branch])
+        
+        if push_result.success:
+            # Success! Set upstream for future pushes
+            logger.info(f"Successfully pushed {current_branch} to {default_remote} and set upstream")
+            return push_result
+        else:
+            # Still failed - return the original error with context
+            return CommandResult(
+                success=False,
+                stdout=push_result.stdout,
+                stderr=f"Original error: {result.stderr}\n\nTried: git push -u {default_remote} {current_branch}\nError: {push_result.stderr}",
+                return_code=push_result.return_code,
+                command=f"git push -u {default_remote} {current_branch}"
+            )
     
     def git_add_all(self) -> CommandResult:
         """Stage all changes."""

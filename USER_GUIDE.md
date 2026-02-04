@@ -20,7 +20,7 @@ Welcome to TeleCode! This guide will help you get started with **voice-to-code f
 6. [Model Selection](#-model-selection)
 7. [Voice Commands](#voice-commands)
 8. [Navigation](#navigation)
-9. [Headless Mode (Locked Screen)](#-headless-mode-locked-screen) ← **NEW!**
+9. [Headless Mode (Virtual Display)](#-headless-mode-virtual-display) ← **NEW!**
 10. [Tips & Tricks](#tips--tricks)
 11. [Troubleshooting](#troubleshooting)
 
@@ -703,27 +703,37 @@ Bot: ⛔ Access denied: Access to .env files is blocked
 
 TeleCode works even when your laptop screen is locked! Here's how each platform handles it:
 
-### 🪟 Windows: TSCON
+### 🪟 Windows: Virtual Display
 
-**TSCON** disconnects your display while keeping your session active. Perfect for GUI automation!
+**Virtual Display** turns off your monitor while keeping your session active. Perfect for GUI automation!
+
+**Works on ALL Windows editions (Home, Pro, Enterprise, Server)!**
+**No administrator access required!**
+**pyautogui works perfectly!** (Unlike screen lock which blocks input)
 
 **Quick Start:**
 1. Right-click the TeleCode tray icon (near the clock)
-2. Click **"🛡️ Secure Lock"**
-3. Screen goes black, but TeleCode keeps working!
+2. Click **"🖥️ Turn Off Display"**
+3. Monitor turns off, but TeleCode keeps working and pyautogui works!
 
-**From Command Line (Admin required):**
+**From Command Line:**
 ```batch
-tscon_secure_lock.bat
+turn_off_display.bat
 ```
 
 **Features:**
 - ✅ Full GUI automation (Cursor Composer buttons work)
-- ✅ Blocks remote desktop apps for security
-- ✅ Auto-lock after 30 minutes
-- ✅ Physical access only to reconnect
+- ✅ **pyautogui works perfectly!** (can click buttons, navigate)
+- ✅ Works on ALL Windows editions (including Home!)
+- ✅ No admin required
+- ✅ Session stays active (not locked!)
+- ✅ TeleCode continues working in background
 
-See [docs/TSCON.md](docs/TSCON.md) for full details.
+**Optional:** Install Indigo Virtual Display during setup for even better pyautogui support.
+
+**Important:** This turns OFF the monitor (not locks it), so pyautogui works! Unlike `LockWorkStation()` which blocks all input.
+
+See [docs/VirtualDisplay.md](docs/VirtualDisplay.md) for full details.
 
 ### 🐧 Linux: Xvfb (Virtual Display)
 
@@ -767,13 +777,13 @@ macOS requires additional setup:
 **Without virtual display:**
 - Git commands work ✅
 - Voice transcription works ✅
-- GUI automation (Accept/Reject buttons) may not work when screen is locked
+- GUI automation (Accept/Reject buttons) works perfectly with Virtual Display (monitor off, session active)
 
 ### Quick Reference
 
 | Platform | Headless Method | System Tray Option | Setup Required |
 |----------|-----------------|-------------------|----------------|
-| 🪟 Windows | TSCON | Secure Lock | None (built-in) |
+| 🪟 Windows | Virtual Display | Turn Off Display (tray icon) | Optional: Indigo Virtual Display (installer) |
 | 🐧 Linux | Xvfb | Start Virtual Display | `apt install xvfb` |
 | 🍎 macOS | caffeinate | Auto-enabled | Virtual adapter for full GUI |
 

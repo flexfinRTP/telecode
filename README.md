@@ -45,7 +45,7 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 1. Download `TeleCode_Setup_v0.1.13_Windows.exe`
 2. Run the installer (right-click → "Run as administrator" if needed)
 3. Follow the setup wizard
-4. Optional: Create TSCON shortcuts for screen lock while running (system tray → Secure Lock)
+4. Optional: Turn off display while keeping session active (system tray → Turn Off Display)
 5. Launch TeleCode from Start Menu or Desktop
 
 </details>
@@ -92,7 +92,7 @@ telecode
 | 🎤 **Voice-to-Code** | Speak your prompts from your phone — they become Cursor AI commands |
 | 💰 **Zero API Costs** | Uses your existing Cursor subscription. No OpenAI API key needed |
 | 🌍 **Code From Anywhere** | On a train? At the gym? Control your code remotely via Telegram |
-| 🔒 **Works Locked** | CLI-based — works even when your laptop screen is locked |
+| 🔒 **Works Headless** | CLI-based — works even when your laptop display is off |
 | 📱 **Just Use Telegram** | No custom app to install. Works on any device |
 
 ---
@@ -384,24 +384,32 @@ For full Cursor Composer control (clickable AI buttons, visual feedback), TeleCo
 
 | Platform | Headless Method | How It Works |
 |----------|-----------------|--------------|
-| 🪟 **Windows** | **TSCON** | Disconnects display while session stays active. GUI automation works perfectly. See [docs/TSCON.md](docs/TSCON.md) |
+| 🪟 **Windows** | **Virtual Display** | Turns off monitor while session stays active. pyautogui works perfectly! Works on ALL Windows editions! See [docs/VirtualDisplay.md](docs/VirtualDisplay.md) |
 | 🐧 **Linux** | **Xvfb** | Virtual X framebuffer. Creates invisible display for GUI automation. Toggle from system tray. |
 | 🍎 **macOS** | **Virtual Display** | Requires external setup (BetterDummy, VNC, or hardware adapter). `caffeinate` prevents sleep automatically. |
 
 <details>
-<summary><b>🪟 Windows TSCON (Recommended for Windows)</b></summary>
+<summary><b>🪟 Windows Virtual Display (Works on ALL Windows Editions!)</b></summary>
 
-TSCON keeps your Windows session fully active while the display is disconnected:
+Virtual Display turns off your monitor while keeping your session active:
 
 ```batch
-# Quick Lock (from TeleCode tray icon)
-Right-click TeleCode tray → Quick Lock
+# Easiest: Use system tray icon
+Right-click TeleCode tray → Turn Off Display
 
-# Or run the batch file as Administrator
-tscon_secure_lock.bat
+# Or run the batch file
+turn_off_display.bat
 ```
 
-See [docs/TSCON.md](docs/TSCON.md) for full details.
+**Works on Windows Home, Pro, Enterprise, Server!**
+**No administrator access required!**
+**pyautogui works perfectly!** (Unlike screen lock which blocks input)
+
+**🔒 Secure Lock:** PIN required when monitor wakes. Set with `/pin set` or in config screen.
+
+**Optional:** Install Indigo Virtual Display during setup for even better pyautogui support.
+
+See [docs/VirtualDisplay.md](docs/VirtualDisplay.md) for full details.
 
 </details>
 
@@ -443,7 +451,7 @@ Download the installer **for your platform** from [GitHub Releases](https://gith
 
 | Platform | File | Notes |
 |----------|------|-------|
-| 🪟 **Windows** | `TeleCode_Setup_v*.exe` | Full installer with TSCON shortcuts, system tray icon |
+| 🪟 **Windows** | `TeleCode_Setup_v*.exe` | Full installer with virtual display support, system tray icon |
 | 🍎 **macOS** | `TeleCode_v*_macOS.dmg` | Drag-and-drop .app bundle, caffeinate auto-enabled |
 | 🐧 **Linux** | `TeleCode_v*_Linux.tar.gz` | Standalone executable, Xvfb headless mode support |
 

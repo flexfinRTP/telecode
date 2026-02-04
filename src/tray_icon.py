@@ -11,7 +11,7 @@ Features:
 - Cross-platform support (Windows/macOS/Linux)
 
 Platform-specific features:
-- Windows: TSCON lock options
+- Windows: Screen lock options
 - Linux: Virtual display (Xvfb) options
 - macOS: Standard menu (no headless lock)
 ============================================
@@ -51,8 +51,7 @@ class TrayIcon:
     def __init__(
         self,
         on_settings: Optional[Callable] = None,
-        on_quick_lock: Optional[Callable] = None,
-        on_secure_lock: Optional[Callable] = None,
+        on_lock_screen: Optional[Callable] = None,
         on_virtual_display: Optional[Callable] = None,
         on_stop: Optional[Callable] = None,
     ):
@@ -61,14 +60,12 @@ class TrayIcon:
         
         Args:
             on_settings: Callback when Settings is clicked
-            on_quick_lock: Callback when Quick Lock is clicked (Windows only)
-            on_secure_lock: Callback when Secure Lock is clicked (Windows only)
+            on_lock_screen: Callback when Turn Off Display is clicked (Windows only)
             on_virtual_display: Callback when Virtual Display is clicked (Linux only)
             on_stop: Callback when Stop is clicked
         """
         self.on_settings = on_settings
-        self.on_quick_lock = on_quick_lock
-        self.on_secure_lock = on_secure_lock
+        self.on_lock_screen = on_lock_screen
         self.on_virtual_display = on_virtual_display
         self.on_stop = on_stop
         
@@ -78,6 +75,7 @@ class TrayIcon:
         self.command_count = 0
         self._running = False
         self._virtual_display_active = False
+        self._screen_locked = False
         
     def _create_icon_image(self, color: str = "#1B5E20") -> 'Image':
         """Create a simple colored icon with brand colors."""
@@ -143,17 +141,14 @@ class TrayIcon:
             pystray.Menu.SEPARATOR,
         ]
         
-        # Platform-specific headless/lock options
+        # Platform-specific headless/display options
         if IS_WINDOWS:
-            # Windows: TSCON lock options
+            # Windows: Turn off display (works on all editions, pyautogui works!)
+            display_label = "🖥️ Turn On Display" if self._screen_locked else "🖥️ Turn Off Display"
             items.extend([
                 pystray.MenuItem(
-                    "⚡ Quick Lock",
-                    self._on_quick_lock_click
-                ),
-                pystray.MenuItem(
-                    "🛡️ Secure Lock",
-                    self._on_secure_lock_click
+                    display_label,
+                    self._on_lock_screen_click
                 ),
                 pystray.Menu.SEPARATOR,
             ])
@@ -184,15 +179,18 @@ class TrayIcon:
         if self.on_settings:
             self.on_settings()
     
-    def _on_quick_lock_click(self, icon, item):
-        """Handle Quick Lock click."""
-        if self.on_quick_lock:
-            self.on_quick_lock()
+    def _on_lock_screen_click(self, icon, item):
+        """Handle Turn Off Display toggle click."""
+        if self.on_lock_screen:
+            self.on_lock_screen()
+            # Toggle state (will be updated by caller if operation succeeds)
+            self._screen_locked = not self._screen_locked
+            self._refresh_menu()
     
-    def _on_secure_lock_click(self, icon, item):
-        """Handle Secure Lock click."""
-        if self.on_secure_lock:
-            self.on_secure_lock()
+    def set_screen_locked(self, locked: bool):
+        """Update the display off status for menu display."""
+        self._screen_locked = locked
+        self._refresh_menu()
     
     def _on_virtual_display_click(self, icon, item):
         """Handle Virtual Display toggle click (Linux)."""
@@ -295,8 +293,7 @@ def get_tray() -> Optional[TrayIcon]:
 
 def start_tray(
     on_settings: Optional[Callable] = None,
-    on_quick_lock: Optional[Callable] = None,
-    on_secure_lock: Optional[Callable] = None,
+    on_lock_screen: Optional[Callable] = None,
     on_virtual_display: Optional[Callable] = None,
     on_stop: Optional[Callable] = None,
 ) -> Optional[TrayIcon]:
@@ -305,8 +302,7 @@ def start_tray(
     
     Args:
         on_settings: Callback when Settings is clicked
-        on_quick_lock: Callback when Quick Lock is clicked (Windows only)
-        on_secure_lock: Callback when Secure Lock is clicked (Windows only)
+        on_lock_screen: Callback when Turn Off Display is clicked (Windows only)
         on_virtual_display: Callback when Virtual Display is toggled (Linux only)
         on_stop: Callback when Stop is clicked
     
@@ -321,8 +317,7 @@ def start_tray(
     if _tray_instance is None:
         _tray_instance = TrayIcon(
             on_settings=on_settings,
-            on_quick_lock=on_quick_lock,
-            on_secure_lock=on_secure_lock,
+            on_lock_screen=on_lock_screen,
             on_virtual_display=on_virtual_display,
             on_stop=on_stop,
         )

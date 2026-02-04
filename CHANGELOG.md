@@ -10,6 +10,139 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.21] - 2026-02-03
+
+### 🔄 Replaced LockWorkStation with Virtual Display (Turn Off Monitor)
+
+### Changed
+- **Replaced LockWorkStation with Virtual Display**: Complete replacement of screen lock with monitor power control
+  - **Why**: `LockWorkStation()` locks the screen (password required), which **blocks ALL input including pyautogui**
+  - **Solution**: Turn off monitor using `SC_MONITORPOWER` API - keeps session active, pyautogui works!
+  - **Benefits**:
+    - ✅ **pyautogui works perfectly!** (LockWorkStation blocks all input)
+    - ✅ Works on Windows Home, Pro, Enterprise, Server
+    - ✅ No administrator access required
+    - ✅ Simpler and more reliable (single API call)
+    - ✅ Better for GUI automation (session stays active, not locked)
+  - **Files Changed**:
+    - `src/screen_lock_helper.py` → `src/virtual_display_helper.py` (replaced with turn off monitor logic)
+    - `screen_lock*.bat` → `turn_off_display.bat` (new batch file)
+    - All imports and references updated throughout codebase
+  - **Optional Component**:
+    - Indigo Virtual Display can be installed during setup (optional checkbox)
+    - Provides even better pyautogui support
+    - Requires one-time admin approval (UAC prompt)
+  - **Documentation Updated**:
+    - `docs/ScreenLock.md` → `docs/VirtualDisplay.md` (rewritten)
+    - All README, USER_GUIDE, CONTRIBUTING docs updated
+    - All code comments updated
+
+### Removed
+- **Screen Lock Files**: Removed all LockWorkStation-related files
+  - `src/screen_lock_helper.py` (replaced by `virtual_display_helper.py`)
+  - `screen_lock.bat` (replaced by `turn_off_display.bat`)
+  - `screen_lock_secure.bat` (no longer needed)
+  - `screen_lock_verbose.bat` (no longer needed)
+
+### Technical Details
+- Uses `SendMessage` with `SC_MONITORPOWER` to turn off monitor
+- No admin required for basic monitor control
+- Session stays active (not locked) - pyautogui works!
+- Monitor can be woken by mouse movement or key press
+- Optional: Indigo Virtual Display for guaranteed pyautogui support
+
+---
+
+## [0.1.20] - 2026-02-03
+
+### 🔄 Replaced TSCON with Screen Lock (LockWorkStation)
+
+> **Note**: Screen Lock was later replaced with Virtual Display in v0.1.21. This entry is kept for historical reference.
+
+### Changed
+- **Replaced TSCON with Screen Lock**: Complete replacement of TSCON method with Windows LockWorkStation API
+  - **Why**: TSCON only works on Windows Pro/Enterprise/Server, not Windows Home
+  - **Solution**: Use `LockWorkStation()` API which works on ALL Windows editions
+  - **Benefits**:
+    - ✅ Works on Windows Home, Pro, Enterprise, Server
+    - ✅ No administrator access required for basic lock
+    - ✅ Simpler and more reliable (single API call vs complex TSCON logic)
+    - ✅ Same functionality (lock screen, keep session active, GUI automation works)
+    - ✅ Better user experience (no path detection issues, no session querying)
+  - **Files Changed**:
+    - `src/tscon_helper.py` → `src/screen_lock_helper.py` (renamed and rewritten)
+    - `tscon_*.bat` → `screen_lock*.bat` (new batch files)
+    - All imports and references updated throughout codebase
+  - **Security Features Preserved**:
+    - RDP disabling (secure mode) - still requires admin
+    - Auto-lock watchdog timer - still works
+    - Audit logging - still works
+  - **Documentation Updated**:
+    - `docs/TSCON.md` → `docs/ScreenLock.md` (rewritten)
+    - All README, USER_GUIDE, CONTRIBUTING docs updated
+    - All code comments updated
+
+### Removed
+- **TSCON Files**: Removed all TSCON-related files
+  - `src/tscon_helper.py` (replaced by `screen_lock_helper.py`)
+  - `tscon_lock.bat` (replaced by `screen_lock.bat`)
+  - `tscon_lock_verbose.bat` (replaced by `screen_lock_verbose.bat`)
+  - `tscon_secure_lock.bat` (replaced by `screen_lock_secure.bat`)
+  - `tscon_restore.bat` (no longer needed)
+
+### Technical Details
+- LockWorkStation API is available on all Windows editions
+- No admin required for basic screen lock
+- Admin only needed for secure mode (RDP disabling)
+- Session stays active for GUI automation (same as TSCON)
+- Password required to unlock (same as TSCON)
+
+---
+
+## [0.1.19] - 2026-02-02
+
+### 🔧 Fixed Git Push - No Upstream Branch Error
+
+### Fixed
+- **Git Push Without Upstream**: Fixed `/push` command failing when branch has no upstream branch configured
+  - **Issue**: `git push` fails with "The current branch master has no upstream branch" error
+  - **Root Cause**: Simple `git push` command doesn't work when upstream tracking isn't set
+  - **Solution**: Enhanced `git_push()` to automatically detect current branch and remote, then push with explicit remote/branch
+  - **Smart Detection**:
+    1. First tries standard `git push` (works if upstream is configured)
+    2. If that fails with "no upstream branch" error, detects:
+       - Current branch name (via `git rev-parse --abbrev-ref HEAD`)
+       - Available remotes (via `git remote`)
+       - Default remote (prefers 'origin', falls back to first available)
+    3. Pushes with explicit remote and branch: `git push -u <remote> <branch>`
+    4. Sets upstream tracking for future pushes (`-u` flag)
+  - **User-Friendly**: Works for all users regardless of:
+    - Branch name (master, main, feature/xyz, etc.)
+    - Remote name (origin, upstream, custom remotes)
+    - Whether upstream is already configured or not
+  - **Safe**: Branch and remote names are sanitized before use
+  - **Error Handling**: Provides clear error messages if:
+    - No remotes are configured
+    - Branch name can't be determined
+    - Push still fails after auto-detection
+
+### Changed
+- **`git_push()` method** in `src/cli_wrapper.py`:
+  - Now handles branches without upstream automatically
+  - Added helper methods:
+    - `_get_current_branch()` - Detects current branch name
+    - `_get_remotes()` - Lists available git remotes
+    - `_get_default_remote()` - Selects default remote (origin preferred)
+  - Enhanced error messages with context about what was tried
+
+### Technical Details
+- Uses `git push -u <remote> <branch>` to set upstream and push in one command
+- Sanitizes branch names to prevent injection attacks
+- Falls back gracefully if detection fails
+- Maintains backward compatibility - works normally if upstream is already set
+
+---
+
 ## [0.1.18] - 2026-02-02
 
 ### 🔧 Fixed
