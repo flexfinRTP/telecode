@@ -5,8 +5,105 @@ All notable changes to TeleCode will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Contributing**: For contributions, we increment `v0.1.x` (patch versions) for bug fixes 
-> and minor improvements. Feature additions will increment to `v0.2.0`, etc.
+> **Contributing**: For contributions, we increment `v0.2.x` (patch versions) for bug fixes 
+> and minor improvements. Feature additions will increment to `v0.3.0`, etc.
+
+---
+
+## [0.2.1] - 2026-02-03
+
+### 🔍 Model Pricing Audit - Cursor 2026 Pricing Model
+
+Comprehensive audit and update of model pricing information to reflect Cursor's current (2026) API-based pricing model.
+
+### Removed
+- **Gemini 2.0 Flash model**: Removed from available models list
+  - Removed from `model_config.py` model registry
+  - Removed from configuration GUI dropdown
+  - Removed from documentation (USER_GUIDE.md, README.md)
+  - Simplified Gemini Flash search patterns in cursor_agent.py
+
+### Changed
+
+#### Model Pricing Documentation
+- **Updated model tier classification** to clarify practical vs. official distinction
+- **Added comprehensive documentation** explaining Cursor's API-based pricing (as of June 2025)
+- **Clarified FREE vs PAID tiers**:
+  - FREE: Cost-effective models practical for free tier usage
+  - PAID: Expensive models that require paid subscription for practical use
+- **Updated all documentation** (USER_GUIDE.md, README.md, model_config.py) with accurate pricing information
+
+#### Key Findings
+- All frontier models are technically available on ALL Cursor plans (free and paid)
+- The difference is in **usage allowances**, not model availability
+- Free tier (Hobby) has very limited usage credits
+- Paid plans include monthly usage credits ($20/month for Pro)
+
+### Added
+
+#### New Documentation
+- **`docs/MODEL_PRICING_AUDIT_2026.md`**: Comprehensive audit report with findings and recommendations
+- **Enhanced code comments** in `model_config.py` explaining the pricing model
+- **Updated USER_GUIDE.md** with detailed explanation of Cursor's pricing structure
+
+### Technical Details
+- Model tier classification remains accurate from a practical usage standpoint
+- All models correctly categorized based on cost-effectiveness for free tier
+- Documentation now clearly explains that "FREE" means "practical for free tier" and "PAID" means "requires paid plan for practical use"
+
+---
+
+## [0.2.0] - 2026-02-03
+
+### 🎉 Major Release - Production Ready
+
+TeleCode v0.2.0 represents a major milestone with significant improvements in stability, features, and user experience. The application is now in excellent shape and ready for production use.
+
+### ✨ Key Highlights
+
+- **Virtual Display Support**: Complete replacement of screen lock with monitor power control for perfect pyautogui compatibility
+- **OCR Text Extraction**: Extract readable text from Cursor screenshots with smart filtering
+- **Progress Screenshots**: Real-time visual feedback while AI processes your prompts
+- **Interactive Commits**: Enhanced commit workflow with file list preview
+- **Git Push Improvements**: Automatic upstream branch detection and setup
+- **Multi-Agent Support**: Better handling of multiple Cursor agent tabs
+- **Cross-Platform**: Full support for Windows, macOS, and Linux with platform-specific optimizations
+
+### Added
+- **Virtual Display (Windows)**: Turn off monitor while keeping session active - works on ALL Windows editions
+- **OCR Integration**: Extract text from screenshots using Tesseract OCR with smart code block filtering
+- **Progress Updates**: Periodic screenshots during AI processing (every 1 min for first 10 min, then every 5 min)
+- **Interactive Commit**: Prompt for commit message with file list preview when no message provided
+- **Git Push Auto-Detection**: Automatically detects and sets upstream branch when pushing
+- **Agent Button Routing**: Continue and Stop buttons correctly target specific agent tabs
+- **Model Selection**: Interactive model switching with support for Opus, Sonnet, Haiku, Gemini, and GPT-4.1
+- **Project Creation Wizard**: Interactive `/create` command for new project scaffolding
+- **Cursor Status Detection**: Smart detection of Cursor IDE status with launch capability
+
+### Changed
+- **Virtual Display Replaces Screen Lock**: Better pyautogui support, works on Windows Home
+- **Screenshot Timing**: Initial screenshot at 8 seconds (was 10 seconds) for faster feedback
+- **Commit Message Format**: Always includes timestamp suffix for consistency
+- **Button Layout**: Streamlined action buttons with clearer separation of Cursor vs Git operations
+- **Error Handling**: Improved error messages and diagnostics throughout
+
+### Fixed
+- **Git Push Without Upstream**: Fixed push failures when branch has no upstream configured
+- **Conversation Handler State**: Fixed unresponsive commands after interruption
+- **Agent Tab Navigation**: Fixed button routing to correct agent tabs
+- **Permission Errors**: Fixed file access issues for installed applications (uses user data directory)
+- **Markdown Parse Errors**: Fixed 400 Bad Request errors in commands with git status output
+
+### Technical Improvements
+- **User Data Directory**: Logs and config now stored in platform-specific user data directories
+- **Cross-Platform Credentials**: Keychain/DPAPI/Secret Service support for all platforms
+- **Enhanced Logging**: Better diagnostic information and error context
+- **State Management**: Improved conversation handler state cleanup and recovery
+
+### Documentation
+- **Updated Guides**: Comprehensive updates to README, USER_GUIDE, and QUICK_START
+- **Virtual Display Docs**: Complete documentation for Windows Virtual Display feature
+- **Security Audit**: Full security audit documentation available
 
 ---
 
@@ -29,7 +126,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `screen_lock*.bat` → `turn_off_display.bat` (new batch file)
     - All imports and references updated throughout codebase
   - **Optional Component**:
-    - Indigo Virtual Display can be installed during setup (optional checkbox)
     - Provides even better pyautogui support
     - Requires one-time admin approval (UAC prompt)
   - **Documentation Updated**:
@@ -49,7 +145,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No admin required for basic monitor control
 - Session stays active (not locked) - pyautogui works!
 - Monitor can be woken by mouse movement or key press
-- Optional: Indigo Virtual Display for guaranteed pyautogui support
 
 ---
 

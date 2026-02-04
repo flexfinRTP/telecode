@@ -1,4 +1,4 @@
-# 🚀 TeleCode v0.1.13
+# 🚀 TeleCode v0.2.0
 
 <div align="center">
   <img src="assets/telecode.png" alt="TeleCode Logo" width="200">
@@ -21,7 +21,7 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 > 🎤 **Speak your code changes** • 🌍 **Works from anywhere** • 💰 **No API fees** • 🔒 **Works even with laptop locked**
 
 > 🔒 **Security Hardened**: [Full security audit](docs/SECURITY_AUDIT.md) with token encryption, prompt injection defense, and rate limiting.
-> 🌍 **v0.1.13**: Agent button routing fixes, screenshot timing improvements, and enhanced multi-agent support!
+> 🎉 **v0.2.0**: Virtual Display support, OCR text extraction, progress screenshots, interactive commits, and much more!
 
 ---
 
@@ -31,9 +31,9 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 
 | Platform | Download | Size |
 |----------|----------|------|
-| 🪟 **Windows** | [**TeleCode_Setup_Windows.exe**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_Setup_v0.1.13_Windows.exe) | ~50 MB |
-| 🍎 **macOS** | [**TeleCode_macOS.dmg**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.13_macOS.dmg) | ~45 MB |
-| 🐧 **Linux** | [**TeleCode_Linux.tar.gz**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.13_Linux.tar.gz) | ~40 MB |
+| 🪟 **Windows** | [**TeleCode_Setup_Windows.exe**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_Setup_v0.2.0_Windows.exe) | ~50 MB |
+| 🍎 **macOS** | [**TeleCode_macOS.dmg**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.2.0_macOS.dmg) | ~45 MB |
+| 🐧 **Linux** | [**TeleCode_Linux.tar.gz**](https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.2.0_Linux.tar.gz) | ~40 MB |
 
 > 📦 **No Python required!** The installers include everything bundled.
 
@@ -42,7 +42,7 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 <details>
 <summary><b>🪟 Windows</b></summary>
 
-1. Download `TeleCode_Setup_v0.1.13_Windows.exe`
+1. Download `TeleCode_Setup_v0.2.0_Windows.exe`
 2. Run the installer (right-click → "Run as administrator" if needed)
 3. Follow the setup wizard
 4. Optional: Turn off display while keeping session active (system tray → Turn Off Display)
@@ -53,7 +53,7 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 <details>
 <summary><b>🍎 macOS</b></summary>
 
-1. Download `TeleCode_v0.1.13_macOS.dmg`
+1. Download `TeleCode_v0.2.0_macOS.dmg`
 2. Open the DMG file
 3. Drag TeleCode to your Applications folder
 4. First launch: Right-click → Open (to bypass Gatekeeper)
@@ -66,9 +66,9 @@ Control Cursor AI from your phone via Telegram. **Voice-to-code** that works fro
 
 ```bash
 # Download and extract
-wget https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.1.13_Linux.tar.gz
-tar -xzvf TeleCode_v0.1.13_Linux.tar.gz
-cd TeleCode_v0.1.13_Linux
+wget https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_v0.2.0_Linux.tar.gz
+tar -xzvf TeleCode_v0.2.0_Linux.tar.gz
+cd TeleCode_v0.2.0_Linux
 
 # Install (adds to ~/.local/bin and creates .desktop entry)
 ./install.sh
@@ -100,53 +100,59 @@ telecode
 ## ✨ Features
 
 ### 🎤 Voice-to-Code
-Hold the mic button in Telegram and speak your coding request. TeleCode transcribes it using **free Google Speech Recognition** (no API key required) and sends it to Cursor AI.
+Hold the mic button in Telegram and speak your coding request. TeleCode transcribes it and sends it to Cursor AI.
 
 ### 💰 Uses Your Cursor Plan
-TeleCode uses the **Cursor CLI** to execute AI prompts — meaning you use your existing Cursor subscription. No separate OpenAI API costs!
+TeleCode uses your existing Cursor subscription. No separate API costs!
 
 ### 🌍 Remote Control From Anywhere
 Control your development machine from anywhere in the world via Telegram:
 - Git operations (status, push, pull, commit)
-- AI-powered code changes
+- AI-powered code changes with real-time progress screenshots
+- OCR text extraction from Cursor screenshots
 - File navigation and reading
-- Project scaffolding
+- Interactive project creation wizard
 
 ### 🔒 Lock-Proof Operation
-Unlike GUI automation tools, TeleCode uses **Cursor CLI** and **subprocess** commands. Works perfectly even when your laptop is locked in your bag.
+TeleCode works even when your laptop screen is locked! Uses **Virtual Display** (Windows/Linux) to turn off the monitor while keeping the session active. Full GUI automation with pyautogui support - works on ALL Windows editions!
+
+### 📸 Real-Time Progress Updates
+See what Cursor is doing while AI processes your prompts:
+- Real-time screenshots with progress updates
+- Text extraction from screenshots
+- Control buttons (Continue, Stop) on progress screenshots
+
+### 🤖 Multi-Model Support
+Switch between AI models on the fly:
+
+**💎 Paid Models** (require paid Cursor subscription for practical use):
+- **Claude Opus 4.5** (best reasoning, 200K context)
+- **Claude Sonnet 4.5** (balanced, 1M context)
+- **Gemini 3 Pro** (advanced reasoning, 1M context)
+- **GPT models** (latest OpenAI, 128K context)
+- **xAI Grok** (alternative reasoning, 128K context)
+
+**✨ Free Models** (cost-effective for free tier):
+- **Claude Haiku 4.5** (fast, 200K context)
+- **Gemini 3 Flash** (large context, 1M context)
+- **Meta Llama 3.1** (open-source, 128K context)
+
+> ⚠️ **Note:** Cursor uses API-based pricing (as of 2025). All models are technically available on all plans, but free tier has very limited usage credits. Paid models are expensive and will quickly exhaust free tier credits. Free models are cost-effective and practical for free tier users. Use free models (`haiku`, `gemini`) if you're on the free tier.
 
 ### 🛡️ Zero-Trust Security
-- **Token Encryption**: Bot token stored in encrypted vault (DPAPI/Keychain)
-- **Prompt Injection Defense**: Multi-layer protection against token extraction
+- **Token Encryption**: Bot token stored securely in encrypted vault
+- **Prompt Injection Defense**: Multi-layer protection against malicious prompts
 - **Single-User Authentication**: Only your Telegram ID can control the bot
 - **Filesystem Sandbox**: All operations restricted to your dev folder
-- **Command Whitelist**: Only approved commands (git, cursor) can execute
-- **Rate Limiting**: Prevents brute-force and DoS attacks
+- **Command Whitelist**: Only approved commands can execute
+- **Rate Limiting**: Prevents abuse and DoS attacks
 - **Audit Logging**: Every remote command is logged for review
-- **No Open Ports**: Uses Telegram long-polling (outbound only)
+- **No Open Ports**: Uses outbound-only connections
 
 See the [full security audit](docs/SECURITY_AUDIT.md) for details.
 
 ---
 
-## 🏗️ Architecture
-
-```
-[Mobile User (Telegram)]
-       |
-       v
-[Telegram Cloud]
-       | (Long Polling - Outbound Only)
-       v
-[Your Laptop]
-   +-- [Security Sentinel] (Auth + Sandbox)
-   |
-   +-- [Command Router]
-          |
-          +-- [Git Handler] (subprocess 'git')
-          |
-          +-- [AI Handler] (Cursor CLI)
-```
 
 ---
 
@@ -311,29 +317,21 @@ TeleCode is designed with security as the **#1 priority**. See [SECURITY.md](doc
 
 1. **Hard-Coded User ID**: Only your Telegram ID can interact with the bot
 2. **Filesystem Sandbox**: Cannot escape the configured `DEV_ROOT` folder
-3. **Path Traversal Prevention**: Blocks `..`, `~`, and absolute paths outside sandbox
-4. **Command Whitelist**: Only `git`, `cursor`, `ls` commands allowed
-5. **Blocked Files**: Cannot read `.env`, SSH keys, or credential files
-6. **Shell Injection Prevention**: Blocks `&&`, `|`, `;`, `` ` `` and other shell operators
-7. **No Open Ports**: Uses outbound-only Telegram long-polling
-8. **Audit Logging**: Every command logged to `telecode_audit.log`
+3. **Path Traversal Prevention**: Blocks attempts to access files outside sandbox
+4. **Command Whitelist**: Only approved commands can execute
+5. **Blocked Files**: Cannot read sensitive files (`.env`, SSH keys, credentials)
+6. **Shell Injection Prevention**: Blocks dangerous shell operators
+7. **No Open Ports**: Uses outbound-only connections
+8. **Audit Logging**: Every command logged for review
 
 ---
 
 ## 🎤 Voice Features
 
-TeleCode can transcribe voice notes using the **free** Google Speech Recognition API.
+TeleCode can transcribe voice notes and execute them as AI prompts.
 
 ### Requirements
 - FFmpeg installed and in PATH
-- `pydub` and `SpeechRecognition` packages (included in requirements.txt)
-
-### How It Works
-1. You send a voice note in Telegram
-2. Bot downloads the `.ogg` file
-3. Converts to `.wav` using FFmpeg
-4. Transcribes using Google Speech API
-5. Executes as an AI prompt
 
 ### Installing FFmpeg
 
@@ -359,87 +357,15 @@ sudo apt install ffmpeg
 
 ## 🖥️ The "Locked Screen" Solution
 
-TeleCode solves the "locked laptop" problem using the **Cursor CLI** instead of GUI automation.
+TeleCode works even when your laptop screen is locked!
 
-### Why This Works
-- **GUI Automation (PyAutoGUI)**: Requires an active, unlocked screen
-- **CLI/Subprocess**: Works in any terminal, locked or unlocked
+### Platform-Specific Headless Modes
 
-### The CLI Approach
-```
-User sends: "/ai Refactor login.py to use JWT"
-             ↓
-Bot executes: cursor --folder /path/to/project --command "Refactor login.py to use JWT"
-             ↓
-Cursor CLI modifies files on disk
-             ↓
-Bot runs: git diff --stat
-             ↓
-User sees: "3 files changed, +50 insertions"
-```
-
-### GUI Automation Mode (Advanced)
-
-For full Cursor Composer control (clickable AI buttons, visual feedback), TeleCode offers platform-specific headless modes:
-
-| Platform | Headless Method | How It Works |
-|----------|-----------------|--------------|
-| 🪟 **Windows** | **Virtual Display** | Turns off monitor while session stays active. pyautogui works perfectly! Works on ALL Windows editions! See [docs/VirtualDisplay.md](docs/VirtualDisplay.md) |
-| 🐧 **Linux** | **Xvfb** | Virtual X framebuffer. Creates invisible display for GUI automation. Toggle from system tray. |
-| 🍎 **macOS** | **Virtual Display** | Requires external setup (BetterDummy, VNC, or hardware adapter). `caffeinate` prevents sleep automatically. |
-
-<details>
-<summary><b>🪟 Windows Virtual Display (Works on ALL Windows Editions!)</b></summary>
-
-Virtual Display turns off your monitor while keeping your session active:
-
-```batch
-# Easiest: Use system tray icon
-Right-click TeleCode tray → Turn Off Display
-
-# Or run the batch file
-turn_off_display.bat
-```
-
-**Works on Windows Home, Pro, Enterprise, Server!**
-**No administrator access required!**
-**pyautogui works perfectly!** (Unlike screen lock which blocks input)
-
-**🔒 Secure Lock:** PIN required when monitor wakes. Set with `/pin set` or in config screen.
-
-**Optional:** Install Indigo Virtual Display during setup for even better pyautogui support.
-
-See [docs/VirtualDisplay.md](docs/VirtualDisplay.md) for full details.
-
-</details>
-
-<details>
-<summary><b>🐧 Linux Xvfb Setup</b></summary>
-
-```bash
-# Install Xvfb
-sudo apt install xvfb
-
-# Install Python wrapper
-pip install pyvirtualdisplay
-
-# Optional: Install xdotool for window management
-sudo apt install xdotool
-```
-
-Toggle virtual display from the TeleCode system tray icon.
-
-</details>
-
-<details>
-<summary><b>🍎 macOS Notes</b></summary>
-
-macOS restricts accessibility APIs when the screen is locked. Options:
-- **caffeinate** - TeleCode runs this automatically to prevent sleep
-- **Virtual display adapter** - BetterDummy, Deskreen, or hardware HDMI adapter
-- **VNC** - Screen sharing to a virtual display
-
-</details>
+| Platform | Method | Notes |
+|----------|--------|-------|
+| 🪟 **Windows** | **Virtual Display** | Turn off monitor while session stays active. Works on ALL Windows editions! Use system tray icon or `turn_off_display.bat` |
+| 🐧 **Linux** | **Xvfb** | Virtual X framebuffer for GUI automation. Toggle from system tray. Requires `sudo apt install xvfb` |
+| 🍎 **macOS** | **Auto-enabled** | TeleCode prevents sleep automatically. For full GUI automation, may need virtual display adapter (BetterDummy, Deskreen, or hardware adapter) |
 
 ---
 
@@ -487,15 +413,6 @@ sha256sum TeleCode
 ```
 
 ---
-
-## 🗺️ Roadmap
-
-- [x] ~~OCR: Screenshot Cursor output and extract text~~ ✅ Done in v0.1.11
-- [x] ~~Custom domain: telecodebot.com~~ ✅ Done in v0.1.12
-- [ ] Multi-Repo: Switch between sandbox roots
-- [ ] Scheduled Tasks: Queue prompts for later execution
-- [ ] GitHub Actions: Trigger remote workflows
-- [ ] Web Dashboard: Real-time status monitoring
 
 ---
 

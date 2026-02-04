@@ -1,6 +1,6 @@
 """
 ============================================
-TeleCode v0.1 - Configuration GUI
+TeleCode v0.2 - Configuration GUI
 ============================================
 Windows XP "Luna" styled setup interface.
 
@@ -167,6 +167,7 @@ class ConfigurationGUI:
             on_save_callback: Function to call when config is saved and bot should start
         """
         self.on_save_callback = on_save_callback
+        self.pending_pin = None  # Store PIN in memory until Save is pressed
         self.root = tk.Tk()
         self._setup_window()
         self._create_widgets()
@@ -178,12 +179,12 @@ class ConfigurationGUI:
         self.root.configure(bg=XP_COLORS["bg_main"])
         self.root.resizable(True, True)  # Allow resizing
         
-        # Center window on screen (850x1150 for comfortable layout with all buttons visible)
+        # Center window on screen (850x800 for good aspect ratio, scrollable for longer content)
         window_width = 850
-        window_height = 1150
+        window_height = 800
         
         # Set minimum size so UI doesn't break when resized too small
-        self.root.minsize(700, 650)
+        self.root.minsize(700, 600)
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         
@@ -245,34 +246,57 @@ class ConfigurationGUI:
         canvas_frame = tk.Frame(self.root, bg=XP_COLORS["bg_main"])
         canvas_frame.pack(fill="both", expand=True)
         
-        canvas = tk.Canvas(canvas_frame, bg=XP_COLORS["bg_main"], highlightthickness=0)
-        scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
+        self.main_canvas = tk.Canvas(canvas_frame, bg=XP_COLORS["bg_main"], highlightthickness=0)
+        scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=self.main_canvas.yview)
         
         # Main container inside canvas
-        main_frame = tk.Frame(canvas, bg=XP_COLORS["bg_main"], padx=15, pady=15)
+        main_frame = tk.Frame(self.main_canvas, bg=XP_COLORS["bg_main"], padx=15, pady=15)
         
         # Configure canvas scrolling
-        canvas.configure(yscrollcommand=scrollbar.set)
+        self.main_canvas.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
+        self.main_canvas.pack(side="left", fill="both", expand=True)
         
         # Create window inside canvas
-        canvas_window = canvas.create_window((0, 0), window=main_frame, anchor="nw")
+        canvas_window = self.main_canvas.create_window((0, 0), window=main_frame, anchor="nw")
         
         # Update scroll region when content changes
         def on_frame_configure(event):
-            canvas.configure(scrollregion=canvas.bbox("all"))
+            # Update the scroll region to match the size of the frame
+            self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
         main_frame.bind("<Configure>", on_frame_configure)
         
         # Make canvas width follow window width
         def on_canvas_configure(event):
-            canvas.itemconfig(canvas_window, width=event.width)
-        canvas.bind("<Configure>", on_canvas_configure)
+            canvas_width = event.width
+            self.main_canvas.itemconfig(canvas_window, width=canvas_width)
+        self.main_canvas.bind("<Configure>", on_canvas_configure)
         
-        # Enable mousewheel scrolling
+        # Enable mousewheel scrolling - bind to canvas and frame
         def on_mousewheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        canvas.bind_all("<MouseWheel>", on_mousewheel)
+            # Windows uses delta, Linux/Mac use different values
+            if sys.platform == "win32":
+                delta = int(-1 * (event.delta / 120))
+            else:
+                delta = -1 if event.num == 4 else 1
+            self.main_canvas.yview_scroll(delta, "units")
+        
+        # Bind mousewheel to canvas and frame for better coverage
+        self.main_canvas.bind("<MouseWheel>", on_mousewheel)
+        canvas_frame.bind("<MouseWheel>", on_mousewheel)
+        main_frame.bind("<MouseWheel>", on_mousewheel)
+        
+        # Also bind to Linux/Mac mouse buttons
+        if sys.platform != "win32":
+            self.main_canvas.bind("<Button-4>", on_mousewheel)
+            self.main_canvas.bind("<Button-5>", on_mousewheel)
+            canvas_frame.bind("<Button-4>", on_mousewheel)
+            canvas_frame.bind("<Button-5>", on_mousewheel)
+            main_frame.bind("<Button-4>", on_mousewheel)
+            main_frame.bind("<Button-5>", on_mousewheel)
+        
+        # Make canvas focusable for keyboard scrolling
+        self.main_canvas.focus_set()
         
         # ==========================================
         # Header with Logo
@@ -523,14 +547,22 @@ class ConfigurationGUI:
                 "💰 Claude Sonnet 4.5 ⭐", 
                 "✨ Claude Haiku 4.5 🆓",
                 "⚡ Gemini 3 Flash 🆓",
-                "🧠 GPT-4.1 ⭐",
+                "🚀 Gemini 3 Pro ⭐",
+                "🧠 GPT-5.2 ⭐",
+                "💻 GPT-5.2 Codex ⭐",
+                "🦙 Meta Llama 3.1 🆓",
+                "🤖 xAI Grok ⭐",
             ]
             self.model_aliases = [
                 "opus",
                 "sonnet",
                 "haiku",
                 "gemini",
+                "geminipro",
                 "gpt",
+                "codex",
+                "llama",
+                "grok",
             ]
         
         self.model_var = tk.StringVar(value=self.model_choices[0] if self.model_choices else "")
@@ -610,7 +642,7 @@ class ConfigurationGUI:
         if sys.platform == "win32":
             lockpin_group = tk.LabelFrame(
                 main_frame,
-                text=" 🔒 Lock PIN/Password (Windows) ",
+                text=" 🔒 Lock PIN (Windows) ",
                 font=("Tahoma", 8, "bold"),
                 bg=XP_COLORS["bg_groupbox"],
                 fg=XP_COLORS["text"],
@@ -623,7 +655,7 @@ class ConfigurationGUI:
                 lockpin_group,
                 text="Set a PIN for secure display lock.\n"
                      "When display turns off, PIN will be required on wake.\n"
-                     "💡 Tip: Use your Windows password for easy remembering!\n"
+                     "💡 Tip: You can use your Windows password as the PIN!\n"
                      "💡 Forgot PIN? Reset via Telegram: /pin set",
                 font=("Tahoma", 7),
                 fg="#666666",
@@ -633,25 +665,6 @@ class ConfigurationGUI:
             lockpin_info.pack(anchor="w", pady=(0, 10))
             
             # PIN status
-            try:
-                from .lock_pin_storage import get_lock_pin_storage
-                storage = get_lock_pin_storage()
-                pin = storage.retrieve_pin()
-                password = storage.retrieve_password()
-                
-                if pin:
-                    status_text = f"✅ PIN set ({'*' * (len(pin) - 2) + pin[-2:] if len(pin) > 2 else '****'})"
-                    status_color = XP_COLORS["success"]
-                elif password:
-                    status_text = "✅ Password set (Windows password)"
-                    status_color = XP_COLORS["success"]
-                else:
-                    status_text = "⚠️ Not set"
-                    status_color = "#CC6600"
-            except:
-                status_text = "❌ Error loading status"
-                status_color = "#CC0000"
-            
             status_frame = tk.Frame(lockpin_group, bg=XP_COLORS["bg_groupbox"])
             status_frame.pack(fill="x", pady=(0, 10))
             
@@ -663,13 +676,17 @@ class ConfigurationGUI:
                 fg=XP_COLORS["text"]
             ).pack(side="left")
             
-            tk.Label(
+            self.pin_status_label = tk.Label(
                 status_frame,
-                text=status_text,
+                text="⚠️ Not set",
                 font=("Tahoma", 8, "bold"),
                 bg=XP_COLORS["bg_groupbox"],
-                fg=status_color
-            ).pack(side="left", padx=(5, 0))
+                fg="#CC6600"
+            )
+            self.pin_status_label.pack(side="left", padx=(5, 0))
+            
+            # Update PIN status display
+            self._update_pin_status()
             
             # PIN input frame
             pin_frame = tk.Frame(lockpin_group, bg=XP_COLORS["bg_groupbox"])
@@ -686,6 +703,8 @@ class ConfigurationGUI:
             ).pack(side="left")
             
             self.pin_var = tk.StringVar()
+            self.pin_visible = False  # Track PIN visibility state
+            
             pin_entry = XPStyleEntry(
                 pin_frame,
                 textvariable=self.pin_var,
@@ -695,6 +714,7 @@ class ConfigurationGUI:
             pin_entry.pack(side="left", padx=(5, 5))
             
             def set_pin():
+                """Store PIN in memory (not saved until user clicks Save)."""
                 pin = self.pin_var.get().strip()
                 if not pin:
                     self._set_status("❌ Please enter a PIN", "error")
@@ -703,21 +723,12 @@ class ConfigurationGUI:
                     self._set_status("❌ PIN must be at least 4 characters", "error")
                     return
                 
-                try:
-                    from .lock_pin_storage import get_lock_pin_storage
-                    from .custom_lock import set_lock_pin
-                    storage = get_lock_pin_storage()
-                    success, msg = storage.store_pin(pin)
-                    if success:
-                        set_lock_pin(pin)
-                        self._set_status(f"✅ PIN set successfully!", "success")
-                        self.pin_var.set("")
-                        # Refresh status
-                        self._create_widgets()
-                    else:
-                        self._set_status(f"❌ Failed: {msg}", "error")
-                except Exception as e:
-                    self._set_status(f"❌ Error: {e}", "error")
+                # Store in memory - will be saved when user clicks Save
+                self.pending_pin = pin
+                self._set_status(f"✅ PIN ready to save (click 'Save Config' to persist)", "success")
+                self.pin_var.set("")
+                # Update status display
+                self._update_pin_status()
             
             set_pin_btn = XPStyleButton(
                 pin_frame,
@@ -727,86 +738,23 @@ class ConfigurationGUI:
             )
             set_pin_btn.pack(side="left", padx=(0, 5))
             
-            def view_pin():
-                try:
-                    from .lock_pin_storage import get_lock_pin_storage
-                    storage = get_lock_pin_storage()
-                    pin = storage.retrieve_pin()
-                    password = storage.retrieve_password()
-                    
-                    if pin:
-                        masked = "*" * (len(pin) - 2) + pin[-2:] if len(pin) > 2 else "****"
-                        self._set_status(f"🔒 Current PIN: {masked}", "info")
-                    elif password:
-                        self._set_status("🔒 Password set (Windows password)", "info")
-                    else:
-                        self._set_status("⚠️ No PIN/password set", "info")
-                except Exception as e:
-                    self._set_status(f"❌ Error: {e}", "error")
+            def toggle_pin_visibility():
+                """Toggle PIN visibility (mask/unmask)."""
+                self.pin_visible = not self.pin_visible
+                if self.pin_visible:
+                    pin_entry.configure(show="")
+                    eye_btn.configure(text="🙈")
+                else:
+                    pin_entry.configure(show="*")
+                    eye_btn.configure(text="👁")
             
-            view_pin_btn = XPStyleButton(
+            eye_btn = XPStyleButton(
                 pin_frame,
-                text="View",
-                command=view_pin,
-                width=8
+                text="👁",
+                command=toggle_pin_visibility,
+                width=4
             )
-            view_pin_btn.pack(side="left")
-            
-            # Password input frame
-            password_frame = tk.Frame(lockpin_group, bg=XP_COLORS["bg_groupbox"])
-            password_frame.pack(fill="x")
-            
-            tk.Label(
-                password_frame,
-                text="Password:",
-                font=("Tahoma", 8),
-                bg=XP_COLORS["bg_groupbox"],
-                fg=XP_COLORS["text"],
-                width=8,
-                anchor="w"
-            ).pack(side="left")
-            
-            self.password_var = tk.StringVar()
-            password_entry = XPStyleEntry(
-                password_frame,
-                textvariable=self.password_var,
-                width=20,
-                show="*"
-            )
-            password_entry.pack(side="left", padx=(5, 5))
-            
-            def set_password():
-                password = self.password_var.get().strip()
-                if not password:
-                    self._set_status("❌ Please enter a password", "error")
-                    return
-                if len(password) < 4:
-                    self._set_status("❌ Password must be at least 4 characters", "error")
-                    return
-                
-                try:
-                    from .lock_pin_storage import get_lock_pin_storage
-                    from .custom_lock import set_lock_password
-                    storage = get_lock_pin_storage()
-                    success, msg = storage.store_password(password)
-                    if success:
-                        set_lock_password(password)
-                        self._set_status("✅ Password set successfully! (Windows password)", "success")
-                        self.password_var.set("")
-                        # Refresh status
-                        self._create_widgets()
-                    else:
-                        self._set_status(f"❌ Failed: {msg}", "error")
-                except Exception as e:
-                    self._set_status(f"❌ Error: {e}", "error")
-            
-            set_password_btn = XPStyleButton(
-                password_frame,
-                text="Set Password",
-                command=set_password,
-                width=12
-            )
-            set_password_btn.pack(side="left")
+            eye_btn.pack(side="left")
         
         # ==========================================
         # Virtual Display Section (Linux Only)
@@ -939,6 +887,10 @@ class ConfigurationGUI:
         )
         self.status_label.pack(pady=(0, 10))
         
+        # Update scroll region after all widgets are created
+        self.root.update_idletasks()
+        self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
+        
     def _load_existing_config(self):
         """Load existing configuration from .env if present."""
         try:
@@ -1018,6 +970,40 @@ class ConfigurationGUI:
         }
         self.status_label.configure(fg=colors.get(level, colors["info"]))
         self.status_var.set(message)
+    
+    def _update_pin_status(self):
+        """Update the PIN status label display."""
+        if not hasattr(self, 'pin_status_label'):
+            return
+        
+        try:
+            # Check if there's a pending PIN (not yet saved)
+            if self.pending_pin:
+                status_text = f"✅ PIN ready to save ({'*' * (len(self.pending_pin) - 2) + self.pending_pin[-2:] if len(self.pending_pin) > 2 else '****'})"
+                status_color = XP_COLORS["success"]
+            else:
+                # Check stored PIN
+                from .lock_pin_storage import get_lock_pin_storage
+                storage = get_lock_pin_storage()
+                pin = storage.retrieve_pin()
+                # Check for legacy password (backward compatibility)
+                password = storage.retrieve_password()
+                
+                if pin:
+                    status_text = f"✅ PIN set ({'*' * (len(pin) - 2) + pin[-2:] if len(pin) > 2 else '****'})"
+                    status_color = XP_COLORS["success"]
+                elif password:
+                    # Legacy password found - show as PIN (they work the same way)
+                    status_text = "✅ PIN set (legacy password)"
+                    status_color = XP_COLORS["success"]
+                else:
+                    status_text = "⚠️ Not set"
+                    status_color = "#CC6600"
+        except:
+            status_text = "❌ Error loading status"
+            status_color = "#CC0000"
+        
+        self.pin_status_label.configure(text=status_text, fg=status_color)
     
     def _check_dangerous_folder(self, folder: str) -> str:
         """
@@ -1347,7 +1333,26 @@ DEFAULT_MODEL={selected_model_alias}
             except Exception:
                 pass
             
-            self._set_status(f"✅ Configuration saved! {len(sandbox_paths)} sandbox(es) configured.", "success")
+            # Save PIN if there's a pending one
+            if self.pending_pin:
+                try:
+                    from .lock_pin_storage import get_lock_pin_storage
+                    from .custom_lock import set_lock_pin
+                    storage = get_lock_pin_storage()
+                    success, msg = storage.store_pin(self.pending_pin)
+                    if success:
+                        set_lock_pin(self.pending_pin)
+                        self._set_status(f"✅ Configuration saved! PIN saved. {len(sandbox_paths)} sandbox(es) configured.", "success")
+                        self.pending_pin = None  # Clear pending PIN
+                        self._update_pin_status()  # Update status display
+                    else:
+                        self._set_status(f"⚠️ Config saved but PIN failed: {msg}", "error")
+                except Exception as e:
+                    logger.error(f"Failed to save PIN: {e}")
+                    self._set_status(f"⚠️ Config saved but PIN failed: {e}", "error")
+            else:
+                self._set_status(f"✅ Configuration saved! {len(sandbox_paths)} sandbox(es) configured.", "success")
+            
             return True
             
         except Exception as e:
@@ -1373,7 +1378,7 @@ DEFAULT_MODEL={selected_model_alias}
                     "Right-click the tray icon to:\n"
                     "• View status\n"
                     "• Open settings\n"
-                    "• Turn off display (Virtual Display)\n"
+                    "• Turn off display\n"
                     "• Stop TeleCode"
                 )
                 self.root.destroy()
@@ -1456,6 +1461,12 @@ DEFAULT_MODEL={selected_model_alias}
             self.root.attributes('-topmost', True)
             self.root.after_idle(lambda: self.root.attributes('-topmost', False))
             self.root.focus_force()
+            
+            # Update scroll region after window is fully rendered
+            def update_scroll_region():
+                self.root.update_idletasks()
+                self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
+            self.root.after(100, update_scroll_region)
             
             # Start main loop
             self.root.mainloop()

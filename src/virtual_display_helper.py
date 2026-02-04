@@ -20,10 +20,6 @@ WHY NOT LockWorkStation?
 - This solution turns off monitor WITHOUT locking
 - Session stays active, pyautogui works!
 
-VIRTUAL DISPLAY OPTION:
-- If Indigo Virtual Display is installed, can switch to virtual display
-- Virtual display allows pyautogui even when physical monitor is off
-- Optional: Install via TeleCode installer (one-time, admin approval)
 
 ============================================
 """
@@ -136,38 +132,6 @@ def turn_on_display() -> bool:
         return False
 
 
-def is_virtual_display_available() -> bool:
-    """
-    Check if Indigo Virtual Display (or similar) is installed.
-    
-    Returns:
-        True if virtual display driver is available, False otherwise
-    """
-    if not IS_WINDOWS:
-        return False
-    
-    try:
-        # Check for virtual display in device manager
-        # Look for common virtual display driver names
-        result = subprocess.run(
-            ['powershell', '-Command', 
-             'Get-PnpDevice | Where-Object {$_.FriendlyName -like "*Virtual*Display*" -or $_.FriendlyName -like "*Indigo*"}'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        
-        if result.returncode == 0 and result.stdout:
-            logger.info("Virtual display detected")
-            return True
-        
-        return False
-        
-    except Exception as e:
-        logger.debug(f"Could not check for virtual display: {e}")
-        return False
-
-
 def get_display_count() -> int:
     """
     Get the number of displays connected.
@@ -223,8 +187,6 @@ def turn_off_display_safe(secure: bool = True, password: Optional[str] = None, p
     if not IS_WINDOWS:
         return False, "Display control is only available on Windows"
     
-    # Check if virtual display is available (optional)
-    has_virtual = is_virtual_display_available()
     display_count = get_display_count()
     
     # Turn off monitor
@@ -264,9 +226,7 @@ def turn_off_display_safe(secure: bool = True, password: Optional[str] = None, p
         else:
             msg = "Monitor turned off. TeleCode continues working!"
         
-        if has_virtual:
-            msg += "\n💡 Virtual display detected - pyautogui works perfectly!"
-        elif display_count > 1:
+        if display_count > 1:
             msg += f"\n💡 {display_count} displays - pyautogui works on other displays"
         else:
             msg += "\n💡 pyautogui works - session is active"
@@ -297,17 +257,11 @@ class VirtualDisplayManager:
     
     def __init__(self):
         self._display_off = False
-        self._virtual_display_available = is_virtual_display_available()
     
     @property
     def is_admin(self) -> bool:
         """Check if running with admin privileges."""
         return is_admin()
-    
-    @property
-    def virtual_display_available(self) -> bool:
-        """Check if virtual display is available."""
-        return self._virtual_display_available
     
     def turn_off_display(self, secure: bool = True, password: Optional[str] = None, pin: Optional[str] = None) -> Tuple[bool, str]:
         """
@@ -362,7 +316,6 @@ class VirtualDisplayManager:
         """
         return {
             "display_off": self._display_off,
-            "virtual_display_available": self._virtual_display_available,
             "display_count": get_display_count(),
             "platform": "Windows" if IS_WINDOWS else "Other",
             "admin": self.is_admin
@@ -407,7 +360,6 @@ if __name__ == "__main__":
         status = manager.get_status()
         print(f"Display Status:")
         print(f"  Off: {status['display_off']}")
-        print(f"  Virtual Display Available: {status['virtual_display_available']}")
         print(f"  Display Count: {status['display_count']}")
         print(f"  Platform: {status['platform']}")
         print(f"  Admin: {status['admin']}")

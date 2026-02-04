@@ -1,4 +1,4 @@
-# 📱 TeleCode User Guide
+# 📱 TeleCode v0.2.0 User Guide
 
 <div align="center">
   <img src="assets/telecode.png" alt="TeleCode Logo" width="150">
@@ -86,7 +86,7 @@ Open Telegram and message your bot. Send `/start` to begin.
 ```
 You: /start
 
-Bot: 🚀 Welcome to TeleCode v0.1
+Bot: 🚀 Welcome to TeleCode v0.2.0
      📂 Sandbox: Projects
      🖥️ Screen: 🔓 Unlocked
      🎤 Voice: ✅ Enabled
@@ -170,8 +170,7 @@ Bot: 🎉 Project Created Successfully!
 
 ### Security Features
 
-- Projects are **always** created inside your DEV_ROOT sandbox
-- Name sanitization blocks path traversal attempts (`../`, `..\\`)
+- Projects are **always** created inside your configured sandbox folder
 - Confirmation step prevents accidental creation
 - All actions are logged for audit
 
@@ -210,12 +209,37 @@ Bot: 📝 Changes Summary
 
 ### Committing Changes
 
+You can commit with a message directly:
+
 ```
 You: /commit Fixed login bug
 
 Bot: ✅ Changes Committed!
-     📝 Message: Fixed login bug
+     📝 Message: Fixed login bug - TeleCode: 2026-02-03 14:30
 ```
+
+Or use interactive mode (when no message is provided):
+
+```
+You: /commit
+
+Bot: 📝 Commit Message Required
+
+     📊 Changed Files (3):
+     1. src/auth/login.py
+     2. src/utils/helpers.py
+     3. tests/test_auth.py
+
+     Enter your commit message:
+     (Type /cancel to abort)
+
+You: Add error handling and validation
+
+Bot: ✅ Changes Committed!
+     📝 Message: Add error handling and validation - TeleCode: 2026-02-03 14:30
+```
+
+**Note:** All commit messages automatically include a timestamp suffix for consistency.
 
 ### Pushing to Remote
 
@@ -264,17 +288,37 @@ Run Cursor AI from your phone — **using your existing Cursor subscription** (n
 ```
 You: /ai Add error handling to the login function
 
-Bot: 🤖 Executing AI prompt...
-     Add error handling to the login function
+Bot: 📤 Sending to Cursor...
+     🤖 Cursor AI is processing...
 
-     ✅ AI Execution Complete!
+     [After 8 seconds]
+     📸 AI Started! (Initial screenshot)
+     
+     [Every 1 minute for first 10 minutes]
+     📸 Progress Update (2 files changed, 1m elapsed)
+     [➡️ Continue] [🛑 Stop]
+     
+     [When complete]
+     ✅ Cursor AI Completed! (3 files changed in 2m 15s)
+     📸 [Screenshot attached]
+     📄 [Extracted text summary attached]
      
      Changes Made:
      src/auth/login.py | 25 +++++++++++++++++++++++++
      1 file changed, 25 insertions(+)
      
-     Use /commit to commit or /revert to undo
+     [📊 Check] [📖 Diff] [✅ Accept]
+     [❌ Reject] [➡️ Continue]
+     [⚙️ Mode] [🧹 Cleanup]
 ```
+
+**Progress Screenshots:**
+- Real-time updates while AI processes your request
+- Control buttons (Continue, Stop) on progress screenshots
+
+**Text Extraction:**
+- Click "📊 Check" to see extracted text from screenshots
+- Long outputs sent as downloadable files
 
 ### Direct Text Prompts
 
@@ -311,17 +355,17 @@ Bot: ✅ Prompt Sent to Cursor!
 
 | Button | Action | What It Does |
 |--------|--------|--------------|
-| 📊 Check | See files modified | Read-only view of changes |
-| 📖 Diff | Shows diff | Read-only diff view |
-| ✅ Accept | Apply in Cursor | Uses Cursor automation to accept |
-| ▶️ Run | **Approve command** | When AI wants to run a script, approve it |
-| 🌐 Search | **Approve web search** | When AI wants to search the web, approve it |
-| 🚫 Cancel | **Cancel action** | Cancel any pending AI action (Escape) |
-| ➡️ Continue | **Continue AI** | Press Continue button (Enter) |
-| 🛑 Stop | **Stop generation** | Stop current AI generation (Ctrl+Shift+Backspace) |
-| ❌ Reject | Discard in Cursor | Uses Escape |
+| 📊 Check | See files modified | View changes made |
+| 📖 Diff | Shows diff | View detailed changes |
+| ✅ Accept | Apply in Cursor | Accept AI changes |
+| ▶️ Run | **Approve command** | Approve when AI wants to run a script |
+| 🌐 Search | **Approve web search** | Approve when AI wants to search the web |
+| 🚫 Cancel | **Cancel action** | Cancel any pending AI action |
+| ➡️ Continue | **Continue AI** | Continue with AI generation |
+| 🛑 Stop | **Stop generation** | Stop current AI generation |
+| ❌ Reject | Discard in Cursor | Reject AI changes |
 | ⚙️ Mode | Change prompt mode | Switch between Agent/Chat |
-| 🧹 Cleanup | Close old agents | Closes oldest agent tabs when >5 |
+| 🧹 Cleanup | Close old agents | Clean up old agent tabs |
 
 ### Approving AI Actions
 
@@ -400,26 +444,24 @@ TeleCode supports two prompt modes that control how AI changes are handled:
 ```
 You: /ai mode agent
 Bot: ✅ Mode Changed! 🤖 Agent mode - Auto-saves files
-     💡 Files auto-save, Reject uses Ctrl+Z
+     💡 Files auto-save, Reject uses undo
 ```
 
-- Uses **Ctrl+Shift+I** to open a new Agent in Cursor
-- **Files are saved immediately** to disk
-- You **won't lose work** even if you forget to click Accept
-- **Reject** uses Ctrl+Z to undo changes
+- Files are saved immediately to disk
+- You won't lose work even if you forget to click Accept
+- Best for quick tasks and safety
 
 ### Chat Mode
 
 ```
 You: /ai mode chat
 Bot: ✅ Mode Changed! 💬 Chat mode
-     ⚠️ Click Accept to apply, Reject uses Escape
+     ⚠️ Click Accept to apply, Reject discards changes
 ```
 
-- Uses **Ctrl+L** to open Chat panel in Cursor
-- Changes are **proposed but not saved** until you click Accept
-- More **control over what gets applied**
-- **Reject** uses Escape to discard proposed changes
+- Changes are proposed but not saved until you click Accept
+- More control over what gets applied
+- Best for careful review
 
 ### Quick Mode Switch
 
@@ -433,11 +475,9 @@ Bot: ✅ Mode Changed! 💬 Chat mode
 
 | Feature | 🤖 Agent Mode | 💬 Chat Mode |
 |---------|---------------|--------------|
-| Shortcut | Ctrl+Shift+I | Ctrl+L |
 | Auto-saves | ✅ Yes | ❌ No |
 | Risk of losing work | Low | Higher |
 | Control | Less (auto-applies) | More (review first) |
-| Reject method | Ctrl+Z | Escape |
 | Best for | Quick tasks, safety | Careful review |
 
 ### Remember: No Git!
@@ -458,7 +498,40 @@ Choose which AI model powers your prompts. Different models have different stren
 | `sonnet` | Claude Sonnet 4.5 | 💰 Paid | 1M | Daily coding, balanced |
 | `haiku` | Claude Haiku 4.5 | ✨ Free | 200K | Quick tasks, simple edits |
 | `gemini` | Gemini 3 Flash | ✨ Free | 1M | Large context, fast |
-| `gpt` | GPT-4.1 | 💰 Paid | 128K | Alternative reasoning |
+| `geminipro` | Gemini 3 Pro | 💰 Paid | 1M | Advanced reasoning, powerful |
+| `gpt` | GPT-5.2 | 💰 Paid | 128K | Latest OpenAI, best reasoning |
+| `codex` | GPT-5.2 Codex | 💰 Paid | 128K | Code-optimized, specialized |
+| `llama` | Meta Llama 3.1 | ✨ Free | 128K | Open-source, privacy-focused |
+| `grok` | xAI Grok | 💰 Paid | 128K | Alternative reasoning model |
+
+### Model Access Requirements
+
+⚠️ **Important:** Understanding Cursor's Pricing Model (2026)
+
+**How Cursor Pricing Works:**
+- As of June 2025, Cursor uses **API-based pricing** (not request-based)
+- **ALL frontier models are available on ALL plans** (free and paid)
+- The difference is in **usage allowances**, not model availability
+- Free tier (Hobby) has very limited usage credits
+- Paid plans include monthly usage credits ($20/month for Pro)
+
+**Model Tier Classification in TeleCode:**
+- **💎 Paid Models** (Opus, Sonnet, Gemini Pro, GPT models, Codex, Grok): 
+  - Expensive models that typically require a paid Cursor subscription for practical use
+  - Free tier users can technically access these, but will quickly exhaust their limited credits
+- **✨ Free Models** (Haiku, Gemini Flash, Llama): 
+  - Cost-effective models that are practical to use within free tier limits
+  - Available to all users and won't quickly exhaust free tier credits
+
+**What happens if you select a paid model on free tier?**
+- You can use it, but will quickly exhaust your limited free tier credits
+- Cursor may show usage warnings or errors when credits are exhausted
+- **Solution:** Switch to a free model using `/model haiku` or `/model gemini` for better free tier experience
+
+**How to check your Cursor plan and usage:**
+- Open Cursor IDE → Settings → Account
+- Check your subscription tier (Hobby/Pro/Pro+/Ultra)
+- Monitor your usage credits in Cursor's account dashboard
 
 ### Interactive Model Selection
 
@@ -474,7 +547,11 @@ Bot: 🤖 Model Selection
      [💎 Opus] [💰 Sonnet] [💰 GPT]
      [✨ Haiku] [⚡ Gemini]
      
-     💎 = Paid  |  ✨ = Free
+     💎 = Paid (requires Cursor subscription)
+     ✨ = Free (available to all)
+     
+     ⚠️ Note: Paid models require a Cursor subscription with access to that model.
+     💡 If you see errors, try switching to a free model.
 
 You: [Clicks Sonnet button]
 
@@ -485,6 +562,10 @@ Bot: ✅ Model Changed!
      💰 Tier: Paid
 
      Your next /ai command will use this model.
+     
+     ⚠️ Note: This is a paid model.
+     💡 Make sure your Cursor subscription includes access to this model.
+     📝 If you see errors, try: /model haiku or /model gemini
 ```
 
 ### Quick Model Switch
@@ -495,6 +576,7 @@ Switch models instantly without the menu:
 You: /model haiku
 
 Bot: ✅ Model changed to **Claude Haiku 4.5** ✨
+     (No warning shown - this is a free model)
 ```
 
 ### List All Models
@@ -504,22 +586,35 @@ You: /models
 
 Bot: 📋 Available AI Models
 
-     💎 Paid Models:
+     💎 Paid Models: (Requires Cursor subscription with access)
        opus - Claude Opus 4.5 (200K) ✅
          Best reasoning, complex tasks
        sonnet - Claude Sonnet 4.5 (1M)
          Balanced, cost-effective
-       gpt - GPT-4.1 (128K)
-         Alternative reasoning
+       geminipro - Gemini 3 Pro (1M)
+         Advanced reasoning, powerful
+       gpt - GPT-5.2 (128K)
+         Latest OpenAI, best reasoning
+       codex - GPT-5.2 Codex (128K)
+         Code-optimized, specialized
+       grok - xAI Grok (128K)
+         Alternative reasoning model
+     
+     ⚠️ Note: Paid models require a Cursor subscription that includes access to that specific model.
+     💡 If you select a paid model you don't have access to, Cursor will show an error.
 
-     ✨ Free Models:
+     ✨ Free Models: (Available to all users)
        haiku - Claude Haiku 4.5 (200K)
          Fast, simple tasks
        gemini - Gemini 3 Flash (1M)
          Large context, fast
+       llama - Meta Llama 3.1 (128K)
+         Open-source, privacy-focused
 
      💡 Quick Switch: /model opus or /model haiku
      🔘 Menu: /model (interactive buttons)
+     
+     📚 Need Help? Check your Cursor subscription settings to see which models you have access to.
 ```
 
 ### Model Persistence
@@ -531,13 +626,19 @@ Bot: 📋 Available AI Models
 
 ### Which Model Should I Use?
 
-| Scenario | Recommended |
-|----------|-------------|
-| Complex refactoring | `opus` |
-| Daily coding tasks | `sonnet` |
-| Quick fixes, simple edits | `haiku` |
-| Large file analysis | `gemini` (1M context) |
-| Alternative reasoning | `gpt` |
+| Scenario | Recommended | Tier |
+|----------|-------------|------|
+| Complex refactoring | `opus` | 💎 Paid |
+| Daily coding tasks | `sonnet` | 💰 Paid |
+| Code-optimized tasks | `codex` | 💰 Paid |
+| Quick fixes, simple edits | `haiku` | ✨ Free |
+| Large file analysis | `gemini` (1M context) | ✨ Free |
+| Advanced reasoning | `geminipro` | 💰 Paid |
+| Latest OpenAI features | `gpt` | 💰 Paid |
+| Privacy-sensitive work | `llama` | ✨ Free |
+| Alternative reasoning | `grok` | 💰 Paid |
+
+**💡 Tip:** Start with free models (`haiku`, `gemini`) to test, then upgrade to paid models if needed.
 
 ---
 
@@ -556,11 +657,7 @@ This is what makes TeleCode special — **speak your code changes from anywhere*
 2. **Speak your prompt** (e.g., "Add a loading spinner to the dashboard")
 3. **Release to send**
 
-The bot will:
-1. Download the audio
-2. Transcribe it to text (free Google Speech API)
-3. Show you what it heard
-4. Execute it via Cursor AI (uses your existing subscription)
+The bot will transcribe your voice and execute it via Cursor AI (uses your existing subscription).
 
 ### Example
 
@@ -674,81 +771,40 @@ Bot: 📄 main.py
 
 ### 🔒 Protected Files (Cannot Read)
 
-For security, certain sensitive files are blocked:
-
-```
-You: /read .env
-
-Bot: ⛔ Access denied: Access to .env files is blocked
-```
-
-| Blocked Pattern | Reason |
-|-----------------|--------|
-| `.env` | Contains your bot token |
-| `id_rsa`, `id_ed25519` | SSH private keys |
-| `.pem`, `.key` | Certificate files |
-| `.ssh/` | SSH directory |
-| `credentials`, `secrets.json` | Credential files |
+For security, certain sensitive files are blocked (e.g., `.env`, SSH keys, certificates).
 
 ### Navigation Rules
 
 - You can only access files **within your current sandbox folder**
 - Switch sandboxes using `/sandbox` to work in different project folders
-- Absolute paths outside sandbox are blocked
-- Sensitive files are always blocked even inside sandbox
+- Sensitive files are always blocked for security
 
 ---
 
 ## 🖥️ Headless Mode (Locked Screen)
 
-TeleCode works even when your laptop screen is locked! Here's how each platform handles it:
+TeleCode works even when your laptop screen is locked!
 
-### 🪟 Windows: Virtual Display
-
-**Virtual Display** turns off your monitor while keeping your session active. Perfect for GUI automation!
-
-**Works on ALL Windows editions (Home, Pro, Enterprise, Server)!**
-**No administrator access required!**
-**pyautogui works perfectly!** (Unlike screen lock which blocks input)
+### 🪟 Windows
 
 **Quick Start:**
 1. Right-click the TeleCode tray icon (near the clock)
 2. Click **"🖥️ Turn Off Display"**
-3. Monitor turns off, but TeleCode keeps working and pyautogui works!
+3. Monitor turns off, but TeleCode keeps working!
 
 **From Command Line:**
 ```batch
 turn_off_display.bat
 ```
 
-**Features:**
-- ✅ Full GUI automation (Cursor Composer buttons work)
-- ✅ **pyautogui works perfectly!** (can click buttons, navigate)
-- ✅ Works on ALL Windows editions (including Home!)
-- ✅ No admin required
-- ✅ Session stays active (not locked!)
-- ✅ TeleCode continues working in background
+Works on ALL Windows editions (Home, Pro, Enterprise, Server) - no admin required!
 
-**Optional:** Install Indigo Virtual Display during setup for even better pyautogui support.
-
-**Important:** This turns OFF the monitor (not locks it), so pyautogui works! Unlike `LockWorkStation()` which blocks all input.
-
-See [docs/VirtualDisplay.md](docs/VirtualDisplay.md) for full details.
-
-### 🐧 Linux: Xvfb (Virtual Display)
-
-**Xvfb** creates a virtual X server for headless GUI automation.
+### 🐧 Linux
 
 **Setup:**
 ```bash
-# Install Xvfb
 sudo apt install xvfb
-
-# Install Python wrapper
 pip install pyvirtualdisplay
-
-# Optional: Window management
-sudo apt install xdotool
 ```
 
 **Usage:**
@@ -756,36 +812,17 @@ sudo apt install xdotool
 2. Click **"🖥️ Start Virtual Display"**
 3. Lock your screen normally — TeleCode keeps working!
 
-**How it works:**
-- Creates invisible display (e.g., `:99`)
-- Cursor runs in the virtual display
-- pyautogui works without physical monitor
+### 🍎 macOS
 
-### 🍎 macOS: caffeinate + Virtual Display
-
-macOS is more restrictive with locked-screen automation.
-
-**What TeleCode does automatically:**
-- Runs `caffeinate -dims` to prevent sleep
-- Keeps the system awake for remote commands
-
-**For full headless GUI:**
-macOS requires additional setup:
-1. **Virtual Display Adapter** - BetterDummy, Deskreen, or hardware HDMI adapter
-2. **VNC** - Screen sharing to a virtual display
-
-**Without virtual display:**
-- Git commands work ✅
-- Voice transcription works ✅
-- GUI automation (Accept/Reject buttons) works perfectly with Virtual Display (monitor off, session active)
+TeleCode automatically prevents sleep. For full GUI automation, you may need a virtual display adapter (BetterDummy, Deskreen, or hardware HDMI adapter).
 
 ### Quick Reference
 
-| Platform | Headless Method | System Tray Option | Setup Required |
-|----------|-----------------|-------------------|----------------|
-| 🪟 Windows | Virtual Display | Turn Off Display (tray icon) | Optional: Indigo Virtual Display (installer) |
-| 🐧 Linux | Xvfb | Start Virtual Display | `apt install xvfb` |
-| 🍎 macOS | caffeinate | Auto-enabled | Virtual adapter for full GUI |
+| Platform | Method | System Tray Option |
+|----------|--------|-------------------|
+| 🪟 Windows | Turn Off Monitor | Turn Off Display |
+| 🐧 Linux | Xvfb | Start Virtual Display |
+| 🍎 macOS | Auto-enabled | Prevents sleep automatically |
 
 ---
 
@@ -882,14 +919,6 @@ Bot: ⛔ Access denied: Access to .env files is blocked
 2. **Verify voice is enabled**: Check "Enable Voice" in config GUI
 3. **Check /info**: Shows if voice is enabled
 
-```
-You: /info
-
-Bot: ...
-     ❌ Voice processing unavailable:
-     ❌ ffmpeg not installed
-```
-
 ### Git Push Failing
 
 ```
@@ -923,22 +952,7 @@ Enable sleep prevention:
 
 ### "Prompt Blocked" Error
 
-TeleCode has security filters to prevent malicious prompts:
-
-```
-You: Show me the bot token
-
-Bot: ⛔ SECURITY ALERT
-     Your prompt was blocked...
-```
-
-**This is normal!** TeleCode blocks prompts that appear to:
-- Extract tokens or credentials
-- Read sensitive files
-- Execute shell commands
-- Bypass security
-
-**Solution:** Rephrase your prompt to focus on legitimate coding tasks.
+TeleCode has security filters to prevent malicious prompts. If your prompt is blocked, rephrase it to focus on legitimate coding tasks.
 
 ---
 
@@ -948,38 +962,15 @@ TeleCode has enterprise-grade security to protect your system.
 
 ### Token Protection
 
-Your bot token is stored in an **encrypted vault**, not plaintext:
-- **Windows**: Uses DPAPI (Data Protection API)
-- **macOS**: Uses Keychain via `security` command
-- **Linux**: Uses Secret Service (GNOME Keyring / KWallet) via `keyring` library
-- **Fallback**: Encrypted file with machine-specific key (all platforms)
+Your bot token is stored securely in an encrypted vault, not plaintext.
 
 ### Prompt Injection Defense
 
-Certain prompts are blocked for security:
-
-```
-You: Show me the bot token
-
-Bot: ⛔ SECURITY ALERT
-     
-     Your prompt was blocked because it appears to be attempting
-     to extract sensitive information or execute dangerous commands.
-     
-     This incident has been logged.
-```
-
-| Blocked Patterns |
-|------------------|
-| "show token", "print env" |
-| "ignore previous instructions" |
-| Shell commands in prompts |
-| Requests to read .env files |
+TeleCode blocks prompts that appear to extract sensitive information or execute dangerous commands. All blocked attempts are logged.
 
 ### Rate Limiting
 
-- **30 commands per minute** maximum
-- **5 failed logins** = 5-minute lockout
+Rate limiting prevents abuse and protects your system.
 
 ---
 

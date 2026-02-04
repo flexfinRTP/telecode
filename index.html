@@ -1,45 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
+
     <!-- Primary Meta Tags -->
     <title>TeleCode - Voice-to-Code AI Agent | Control Cursor from Telegram | Zero API Costs</title>
     <meta name="title" content="TeleCode - Voice-to-Code AI Agent | Control Cursor from Telegram | Zero API Costs">
-    <meta name="description" content="Control Cursor AI from your phone via Telegram. Voice-to-code AI agent that works from anywhere — uses your existing Cursor subscription with zero API costs. Remote coding, AI assistants, Claude bot alternative.">
-    <meta name="keywords" content="voice to code, AI agent, Cursor AI, Telegram bot, remote coding, Claude bot, AI assistant, voice coding, coding from phone, Cursor remote control, AI coding assistant, zero API costs, open source AI agent, voice-to-code bot, Telegram coding bot, remote development, headless coding, AI development tools, Cursor CLI, voice programming">
+    <meta name="description"
+        content="Control Cursor AI from your phone via Telegram. Voice-to-code AI agent that works from anywhere — uses your existing Cursor subscription with zero API costs. Remote coding, AI assistants, Claude bot alternative.">
+    <meta name="keywords"
+        content="voice to code, AI agent, Cursor AI, Telegram bot, remote coding, Claude bot, AI assistant, voice coding, coding from phone, Cursor remote control, AI coding assistant, zero API costs, open source AI agent, voice-to-code bot, Telegram coding bot, remote development, headless coding, AI development tools, Cursor CLI, voice programming">
     <meta name="author" content="TeleCode">
     <meta name="robots" content="index, follow">
     <meta name="language" content="English">
     <meta name="revisit-after" content="7 days">
     <meta name="theme-color" content="#2E7D32">
-    
+
     <!-- Canonical URL -->
     <link rel="canonical" href="https://telecodebot.com/">
-    
+
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://telecodebot.com/">
     <meta property="og:title" content="TeleCode - Voice-to-Code AI Agent | Control Cursor from Telegram">
-    <meta property="og:description" content="Control Cursor AI from your phone via Telegram. Voice-to-code that works from anywhere — uses your existing Cursor subscription with zero API costs. Open source AI agent for remote coding.">
+    <meta property="og:description"
+        content="Control Cursor AI from your phone via Telegram. Voice-to-code that works from anywhere — uses your existing Cursor subscription with zero API costs. Open source AI agent for remote coding.">
     <meta property="og:image" content="https://telecodebot.com/assets/telecode.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="TeleCode - Voice-to-Code AI Agent Logo">
     <meta property="og:site_name" content="TeleCode">
     <meta property="og:locale" content="en_US">
-    
+
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:url" content="https://telecodebot.com/">
     <meta name="twitter:title" content="TeleCode - Voice-to-Code AI Agent | Control Cursor from Telegram">
-    <meta name="twitter:description" content="Control Cursor AI from your phone via Telegram. Voice-to-code that works from anywhere — zero API costs. Open source AI agent for remote coding.">
+    <meta name="twitter:description"
+        content="Control Cursor AI from your phone via Telegram. Voice-to-code that works from anywhere — zero API costs. Open source AI agent for remote coding.">
     <meta name="twitter:image" content="https://telecodebot.com/assets/telecode.png">
     <meta name="twitter:image:alt" content="TeleCode - Voice-to-Code AI Agent">
     <meta name="twitter:creator" content="@telecodebot">
     <meta name="twitter:site" content="@telecodebot">
-    
+
     <!-- Additional Meta Tags -->
     <meta name="application-name" content="TeleCode">
     <meta name="apple-mobile-web-app-title" content="TeleCode">
@@ -48,12 +53,12 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="msapplication-TileColor" content="#2E7D32">
     <meta name="msapplication-config" content="/browserconfig.xml">
-    
+
     <!-- Favicons -->
     <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <link rel="manifest" href="/site.webmanifest">
-    
+
     <!-- Structured Data (JSON-LD) -->
     <script type="application/ld+json">
     {
@@ -70,7 +75,7 @@
       "description": "Voice-to-code AI agent that controls Cursor AI from Telegram. Remote coding assistant with zero API costs, uses your existing Cursor subscription.",
       "url": "https://telecodebot.com",
       "downloadUrl": "https://github.com/flexfinRTP/telecode/releases/latest",
-      "softwareVersion": "0.1.13",
+      "softwareVersion": "0.2.0",
       "releaseNotes": "OCR text extraction, progress screenshots, voice-to-code, cross-platform support",
       "author": {
         "@type": "Organization",
@@ -94,7 +99,7 @@
       "keywords": "voice to code, AI agent, Cursor AI, Telegram bot, remote coding, Claude bot, AI assistant"
     }
     </script>
-    
+
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -108,7 +113,7 @@
       }
     }
     </script>
-    
+
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -124,7 +129,9 @@
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Space+Mono:wght@400;700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Space+Mono:wght@400;700&family=Instrument+Sans:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
     <style>
         :root {
             /* Brand Colors - Emerald Horse */
@@ -158,9 +165,11 @@
             min-height: 100vh;
             overflow-x: hidden;
             line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
-        /* ===== ANIMATED BACKGROUND ===== */
+        /* ===== STATIC BACKGROUND + COMMANDS ANIMATION ===== */
         .hero-bg {
             position: fixed;
             top: 0;
@@ -169,81 +178,68 @@
             height: 100%;
             pointer-events: none;
             z-index: 0;
-            overflow: hidden;
+            overflow: visible;
         }
 
-        /* Flowing gradient orbs */
-        .orb {
+        /* Static subtle background gradient (no animation) */
+        .hero-bg::before {
+            content: '';
             position: absolute;
-            border-radius: 50%;
-            filter: blur(80px);
-            opacity: 0.4;
-            animation: float 20s ease-in-out infinite;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(circle at 80% 20%, rgba(102, 187, 106, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 20% 80%, rgba(67, 160, 71, 0.06) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(129, 199, 132, 0.04) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
         }
 
-        .orb-1 {
-            width: 600px;
-            height: 600px;
-            background: radial-gradient(circle, var(--emerald-light) 0%, transparent 70%);
-            top: -200px;
-            right: -200px;
-            animation-delay: 0s;
-        }
-
-        .orb-2 {
-            width: 400px;
-            height: 400px;
-            background: radial-gradient(circle, var(--emerald-accent) 0%, transparent 70%);
-            bottom: 20%;
-            left: -100px;
-            animation-delay: -5s;
-        }
-
-        .orb-3 {
-            width: 300px;
-            height: 300px;
-            background: radial-gradient(circle, var(--emerald-glow) 0%, transparent 70%);
-            top: 50%;
-            right: 10%;
-            animation-delay: -10s;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translate(0, 0) scale(1); }
-            25% { transform: translate(30px, -30px) scale(1.05); }
-            50% { transform: translate(-20px, 20px) scale(0.95); }
-            75% { transform: translate(10px, -10px) scale(1.02); }
-        }
-
-        /* Flowing code particles */
+        /* Beautiful commands animation - optimized for performance */
         .particles {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
+            z-index: 1;
+            overflow: visible;
         }
 
         .particle {
             position: absolute;
             font-family: 'Space Mono', monospace;
-            font-size: 18px;
+            font-size: 17px;
             color: var(--emerald-primary);
-            opacity: 0;
             font-weight: 700;
-            animation: rise 30s linear infinite;
+            will-change: transform, opacity;
+            transform: translateZ(0);
+            backface-visibility: hidden;
+            text-rendering: optimizeSpeed;
+            pointer-events: none;
+            white-space: nowrap;
+            text-shadow: 0 0 10px rgba(46, 125, 50, 0.5), 0 2px 4px rgba(13, 40, 24, 0.3);
+            letter-spacing: 0.5px;
+            z-index: 2;
+            opacity: 0;
         }
 
         @keyframes rise {
-            0% { 
+            0% {
                 opacity: 0;
-                transform: translateY(100vh) rotate(0deg);
+                transform: translate3d(0, 100vh, 0) scale(0.9);
             }
-            10% { opacity: 0.4; }
-            90% { opacity: 0.4; }
-            100% { 
+            3% {
+                opacity: 0.6;
+            }
+            97% {
+                opacity: 0.6;
+            }
+            100% {
                 opacity: 0;
-                transform: translateY(-100vh) rotate(360deg);
+                transform: translate3d(0, -100vh, 0) scale(1.1);
             }
         }
 
@@ -256,9 +252,9 @@
             z-index: 1000;
             padding: 1rem 2rem;
             backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             background: rgba(250, 255, 248, 0.8);
             border-bottom: 1px solid rgba(46, 125, 50, 0.1);
-            transition: all 0.3s ease;
         }
 
         nav.scrolled {
@@ -304,7 +300,6 @@
             text-decoration: none;
             font-weight: 500;
             font-size: 0.95rem;
-            transition: color 0.3s ease;
         }
 
         .nav-links a:hover {
@@ -317,13 +312,10 @@
             padding: 0.6rem 1.25rem;
             border-radius: 8px;
             font-weight: 600 !important;
-            transition: all 0.3s ease !important;
         }
 
         .nav-cta:hover {
             background: var(--emerald-dark) !important;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 20px rgba(46, 125, 50, 0.4);
         }
 
         /* ===== HERO SECTION ===== */
@@ -334,7 +326,7 @@
             justify-content: center;
             padding: 6rem 2rem 4rem;
             position: relative;
-            z-index: 1;
+            z-index: 10;
         }
 
         .hero-content {
@@ -345,21 +337,12 @@
         .hero-logo {
             width: 360px;
             height: 270px;
-            margin: 0 auto 2rem;
-            animation: heroEnter 1s ease-out;
+            margin: 0.05rem auto 0.05rem;
+            margin-top: -4rem;
+            margin-bottom: -5rem;
             filter: drop-shadow(0 20px 40px rgba(27, 94, 32, 0.3));
             object-fit: contain;
-        }
-
-        @keyframes heroEnter {
-            0% { 
-                opacity: 0;
-                transform: translateY(-30px) scale(0.9);
-            }
-            100% { 
-                opacity: 1;
-                transform: translateY(0) scale(1);
-            }
+            display: block;
         }
 
         .hero h1 {
@@ -367,9 +350,8 @@
             font-size: clamp(3rem, 8vw, 5rem);
             font-weight: 700;
             color: var(--emerald-deep);
-            margin-bottom: 0.5rem;
+            margin: 0.05rem auto 0.05rem;
             letter-spacing: -2px;
-            animation: fadeUp 1s ease-out 0.2s both;
         }
 
         .hero h1 span {
@@ -384,7 +366,6 @@
             color: var(--text-muted);
             margin-bottom: 1.5rem;
             font-weight: 500;
-            animation: fadeUp 1s ease-out 0.4s both;
         }
 
         .hero-description {
@@ -393,12 +374,6 @@
             max-width: 600px;
             margin: 0 auto 2.5rem;
             line-height: 1.7;
-            animation: fadeUp 1s ease-out 0.6s both;
-        }
-
-        @keyframes fadeUp {
-            0% { opacity: 0; transform: translateY(20px); }
-            100% { opacity: 1; transform: translateY(0); }
         }
 
         .hero-badges {
@@ -407,7 +382,6 @@
             gap: 1rem;
             justify-content: center;
             margin-bottom: 3rem;
-            animation: fadeUp 1s ease-out 0.8s both;
         }
 
         .badge {
@@ -439,13 +413,9 @@
             border-radius: 6px;
             margin-bottom: 2rem;
             margin-top: 1rem;
-            animation: fadeUp 1s ease-out 0.3s both;
         }
 
         /* ===== DOWNLOAD SECTION ===== */
-        .download-section {
-            animation: fadeUp 1s ease-out 1s both;
-        }
 
         .download-grid {
             display: grid;
@@ -455,7 +425,7 @@
             margin: 0 auto 1.5rem;
             justify-items: center;
         }
-        
+
         .download-grid-portable {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -464,7 +434,7 @@
             margin: 0 auto 1.5rem;
             justify-items: center;
         }
-        
+
         .download-section-title {
             font-size: 1.1rem;
             font-weight: 600;
@@ -472,16 +442,15 @@
             margin-bottom: 1rem;
             text-align: center;
         }
-        
+
         .download-portable-link {
             font-size: 0.85rem;
             color: var(--emerald-primary);
             text-decoration: none;
             margin-top: 0.5rem;
             display: inline-block;
-            transition: color 0.3s ease;
         }
-        
+
         .download-portable-link:hover {
             color: var(--emerald-dark);
             text-decoration: underline;
@@ -498,7 +467,6 @@
             text-decoration: none;
             font-weight: 600;
             font-size: 1.1rem;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
             width: 100%;
@@ -506,39 +474,7 @@
             border: 2px solid transparent;
             backdrop-filter: blur(10px);
         }
-        
-        .download-btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
-            opacity: 0;
-            transition: opacity 0.4s ease;
-        }
-        
-        .download-btn:hover::before {
-            opacity: 1;
-        }
-        
-        .download-btn::after {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-            opacity: 0;
-            transition: opacity 0.4s ease;
-        }
-        
-        .download-btn:hover::after {
-            opacity: 1;
-        }
-        
+
         .download-btn-wrapper {
             display: flex;
             flex-direction: column;
@@ -547,25 +483,20 @@
             position: relative;
             z-index: 1;
         }
-        
+
         .download-btn-logo {
             width: 64px;
             height: 64px;
             object-fit: contain;
             filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
-            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        
-        .download-btn:hover .download-btn-logo {
-            transform: scale(1.1) translateY(-4px);
-        }
-        
+
         .download-btn-label {
             font-size: 1.1rem;
             font-weight: 600;
             letter-spacing: -0.3px;
         }
-        
+
         .download-btn-version {
             font-size: 0.7rem;
             font-weight: 500;
@@ -581,15 +512,12 @@
             background: linear-gradient(135deg, #0078D4 0%, #005A9E 100%);
             color: white;
             box-shadow: 0 8px 32px rgba(0, 120, 212, 0.3),
-                        0 2px 8px rgba(0, 0, 0, 0.1);
+                0 2px 8px rgba(0, 0, 0, 0.1);
             border-color: rgba(255, 255, 255, 0.1);
         }
 
         .download-btn.windows:hover {
-            transform: translateY(-6px) scale(1.02);
-            box-shadow: 0 16px 48px rgba(0, 120, 212, 0.4),
-                        0 4px 16px rgba(0, 0, 0, 0.15);
-            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 12px 40px rgba(0, 120, 212, 0.35);
         }
 
         /* macOS Button */
@@ -597,15 +525,12 @@
             background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
             color: white;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3),
-                        0 2px 8px rgba(0, 0, 0, 0.2);
+                0 2px 8px rgba(0, 0, 0, 0.2);
             border-color: rgba(255, 255, 255, 0.1);
         }
 
         .download-btn.macos:hover {
-            transform: translateY(-6px) scale(1.02);
-            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4),
-                        0 4px 16px rgba(0, 0, 0, 0.25);
-            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
         }
 
         /* Linux Button */
@@ -613,22 +538,19 @@
             background: linear-gradient(135deg, #FCC624 0%, #F7B500 100%);
             color: #000000;
             box-shadow: 0 8px 32px rgba(252, 198, 36, 0.3),
-                        0 2px 8px rgba(0, 0, 0, 0.1);
+                0 2px 8px rgba(0, 0, 0, 0.1);
             border-color: rgba(0, 0, 0, 0.1);
         }
 
         .download-btn.linux:hover {
-            transform: translateY(-6px) scale(1.02);
-            box-shadow: 0 16px 48px rgba(252, 198, 36, 0.4),
-                        0 4px 16px rgba(0, 0, 0, 0.15);
-            border-color: rgba(0, 0, 0, 0.15);
+            box-shadow: 0 12px 40px rgba(252, 198, 36, 0.35);
         }
-        
+
         .download-btn.windows .download-btn-version,
         .download-btn.macos .download-btn-version {
             color: rgba(255, 255, 255, 0.85);
         }
-        
+
         .download-btn.linux .download-btn-version {
             color: rgba(0, 0, 0, 0.7);
         }
@@ -654,6 +576,8 @@
             position: relative;
             z-index: 1;
             background: linear-gradient(180deg, transparent 0%, rgba(46, 125, 50, 0.03) 100%);
+            content-visibility: auto;
+            contain-intrinsic-size: auto 800px;
         }
 
         .section-header {
@@ -684,21 +608,21 @@
         }
 
         .feature-card {
-            background: linear-gradient(135deg, 
-                rgba(255, 255, 255, 0.5) 0%, 
-                rgba(255, 255, 255, 0.3) 50%,
-                rgba(250, 250, 250, 0.4) 100%);
+            background: linear-gradient(135deg,
+                    rgba(255, 255, 255, 0.5) 0%,
+                    rgba(255, 255, 255, 0.3) 50%,
+                    rgba(250, 250, 250, 0.4) 100%);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             border-radius: 20px;
             padding: 2rem;
             position: relative;
             overflow: hidden;
-            transition: all 0.4s ease;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
             border: 1px solid rgba(46, 125, 50, 0.15);
             opacity: 0.85;
         }
-        
+
         .feature-card::after {
             content: '';
             position: absolute;
@@ -707,9 +631,9 @@
             right: 0;
             bottom: 0;
             background: linear-gradient(135deg,
-                rgba(255, 255, 255, 0.2) 0%,
-                rgba(255, 255, 255, 0.05) 50%,
-                rgba(200, 200, 200, 0.1) 100%);
+                    rgba(255, 255, 255, 0.2) 0%,
+                    rgba(255, 255, 255, 0.05) 50%,
+                    rgba(200, 200, 200, 0.1) 100%);
             pointer-events: none;
             border-radius: 20px;
         }
@@ -728,13 +652,8 @@
         }
 
         .feature-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 20px 50px rgba(13, 40, 24, 0.15);
-            opacity: 1;
-            background: linear-gradient(135deg, 
-                rgba(255, 255, 255, 0.7) 0%, 
-                rgba(255, 255, 255, 0.5) 50%,
-                rgba(250, 250, 250, 0.6) 100%);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 30px rgba(13, 40, 24, 0.12);
         }
 
         .feature-card:hover::before {
@@ -771,7 +690,7 @@
             position: relative;
             z-index: 1;
         }
-        
+
         .feature-new {
             position: relative;
             z-index: 2;
@@ -790,20 +709,20 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        
+
         .feature-card-wide {
             grid-column: 1 / -1;
         }
-        
+
         .feature-card-wide h3 {
             font-size: 1.5rem;
         }
-        
+
         .feature-card-wide p {
             font-size: 1rem;
             line-height: 1.8;
         }
-        
+
         .feature-card-wide .feature-icon {
             width: 72px;
             height: 72px;
@@ -843,9 +762,17 @@
             border-radius: 50%;
         }
 
-        .terminal-dot.red { background: #ff5f56; }
-        .terminal-dot.yellow { background: #ffbd2e; }
-        .terminal-dot.green { background: #27ca40; }
+        .terminal-dot.red {
+            background: #ff5f56;
+        }
+
+        .terminal-dot.yellow {
+            background: #ffbd2e;
+        }
+
+        .terminal-dot.green {
+            background: #27ca40;
+        }
 
         .terminal-title {
             margin-left: auto;
@@ -887,26 +814,8 @@
             width: 8px;
             height: 16px;
             background: var(--emerald-light);
-            animation: blink 1s step-end infinite;
             vertical-align: middle;
             margin-left: 2px;
-        }
-
-        @keyframes blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0; }
-        }
-
-        /* Typing animation */
-        .typing {
-            overflow: hidden;
-            white-space: nowrap;
-            animation: typing 2s steps(40, end);
-        }
-
-        @keyframes typing {
-            from { width: 0; }
-            to { width: 100%; }
         }
 
         /* ===== HOW IT WORKS ===== */
@@ -915,6 +824,8 @@
             background: linear-gradient(180deg, rgba(46, 125, 50, 0.03) 0%, transparent 100%);
             position: relative;
             z-index: 1;
+            content-visibility: auto;
+            contain-intrinsic-size: auto 600px;
         }
 
         .steps {
@@ -953,12 +864,6 @@
             height: 80px;
             border: 2px dashed var(--emerald-light);
             border-radius: 50%;
-            animation: rotate 20s linear infinite;
-        }
-
-        @keyframes rotate {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
         }
 
         .step h3 {
@@ -978,6 +883,8 @@
             padding: 6rem 2rem;
             position: relative;
             z-index: 1;
+            content-visibility: auto;
+            contain-intrinsic-size: auto 700px;
         }
 
         .security-grid {
@@ -996,7 +903,6 @@
             background: white;
             border-radius: 12px;
             border: 1px solid rgba(46, 125, 50, 0.1);
-            transition: all 0.3s ease;
         }
 
         .security-item:hover {
@@ -1088,12 +994,10 @@
             border-radius: 12px;
             text-decoration: none;
             font-weight: 600;
-            transition: all 0.3s ease;
             position: relative;
         }
 
         .github-btn:hover {
-            transform: translateY(-3px);
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
         }
 
@@ -1190,7 +1094,7 @@
 
         /* ===== FOOTER ===== */
         footer {
-            padding: 4rem 2rem 2rem;
+
             text-align: center;
             position: relative;
             z-index: 1;
@@ -1202,13 +1106,17 @@
             height: 270px;
             opacity: 0.9;
             object-fit: contain;
+            margin: 0.05rem auto 0.05rem;
+            margin-top: -4rem;
+            margin-bottom: -5rem;
+            display: block;
         }
 
         .footer-tagline {
             font-family: 'Instrument Sans', sans-serif;
             font-size: 1.5rem;
             color: var(--emerald-deep);
-            margin-bottom: 0.5rem;
+            margin: 0.15rem auto 0.5rem;
         }
 
         .footer-sub {
@@ -1229,7 +1137,6 @@
             color: var(--emerald-primary);
             text-decoration: none;
             font-weight: 500;
-            transition: color 0.3s ease;
         }
 
         .footer-links a:hover {
@@ -1239,6 +1146,14 @@
         .footer-copy {
             font-size: 0.85rem;
             color: var(--text-muted);
+        }
+
+        /* ===== ACCESSIBILITY ===== */
+        @media (prefers-reduced-motion: reduce) {
+            .particle {
+                animation: none !important;
+                opacity: 0.2 !important;
+            }
         }
 
         /* ===== RESPONSIVE ===== */
@@ -1258,25 +1173,25 @@
             .hero-logo {
                 width: 270px;
                 height: 203px;
-                
+
             }
-            
+
             .nav-logo img {
                 width: 84px;
                 height: 64px;
             }
-            
+
             .download-grid,
             .download-grid-portable {
                 grid-template-columns: 1fr;
                 gap: 1rem;
             }
-            
+
             .download-btn {
                 min-height: 180px;
                 padding: 1.5rem 1.25rem 1rem;
             }
-            
+
             .download-btn-logo {
                 width: 56px;
                 height: 56px;
@@ -1308,25 +1223,13 @@
             }
         }
 
-        /* ===== SCROLL ANIMATIONS ===== */
-        .reveal {
-            opacity: 0;
-            transform: translateY(30px);
-            transition: all 0.8s ease;
-        }
-
-        .reveal.active {
-            opacity: 1;
-            transform: translateY(0);
-        }
+        /* ===== REMOVED SCROLL ANIMATIONS FOR PERFORMANCE ===== */
     </style>
 </head>
+
 <body>
-    <!-- Animated Background -->
+    <!-- Static Background + Commands Animation -->
     <div class="hero-bg">
-        <div class="orb orb-1"></div>
-        <div class="orb orb-2"></div>
-        <div class="orb orb-3"></div>
         <div class="particles" id="particles"></div>
     </div>
 
@@ -1350,37 +1253,38 @@
     <!-- Hero Section -->
     <section class="hero" id="download">
         <div class="hero-content">
-            <!-- <img src="assets/telecode.png" alt="TeleCode Logo" class="hero-logo"> -->
             <span class="version-tag" id="version-tag">Loading...</span>
+            <img src="assets/telecode.png" alt="TeleCode Logo" class="hero-logo">
             <h1>Tele<span>Code</span></h1>
             <p class="hero-tagline">Voice-to-Code, From Anywhere</p>
             <p class="hero-description">
-                Control Cursor AI from your phone via Telegram. Speak your code changes, 
+                Control Cursor AI from your phone via Telegram. Speak your code changes,
                 get real-time updates — uses your existing Cursor plan with zero API costs.
             </p>
 
             <div class="hero-badges">
                 <div class="badge">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                        <line x1="12" y1="19" x2="12" y2="23"/>
-                        <line x1="8" y1="23" x2="16" y2="23"/>
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" y1="19" x2="12" y2="23" />
+                        <line x1="8" y1="23" x2="16" y2="23" />
                     </svg>
                     Voice-to-Code
                 </div>
                 <div class="badge">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M2 12h20"/>
-                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M2 12h20" />
+                        <path
+                            d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
                     </svg>
                     Works From Anywhere
                 </div>
                 <div class="badge">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="12" y1="1" x2="12" y2="23"/>
-                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                        <line x1="12" y1="1" x2="12" y2="23" />
+                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                     </svg>
                     Zero API Costs
                 </div>
@@ -1391,37 +1295,46 @@
                     <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
                         <a href="#" class="download-btn windows" id="windows-installer" data-type="installer">
                             <div class="download-btn-wrapper">
-                                <img src="https://img.icons8.com/color/96/000000/windows-10.png" alt="Windows" class="download-btn-logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIGZpbGw9IiMwMDc4RDQiLz48cGF0aCBkPSJNMCAzLjQ0OUw5Ljc1IDIuMXY5LjQ1MUgwTTEwLjk0OS0uNjAyTDI0IDB2MTEuNEgxMC45NDlNMTIgMTIuNmg5Ljc1djkuNDUxTDAgMjAuNjk5TTEwLjk0OSAxMi42SDI0VjI0bC0xMi45LTEuODAxIiBmaWxsPSJ3aGl0ZSIvPjwvc3ZnPg=='">
+                                <img src="https://img.icons8.com/color/96/000000/windows-10.png" alt="Windows"
+                                    class="download-btn-logo"
+                                    onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIGZpbGw9IiMwMDc4RDQiLz48cGF0aCBkPSJNMCAzLjQ0OUw5Ljc1IDIuMXY5LjQ1MUgwTTEwLjk0OS0uNjAyTDI0IDB2MTEuNEgxMC45NDlNMTIgMTIuNmg5Ljc1djkuNDUxTDAgMjAuNjk5TTEwLjk0OSAxMi42SDI0VjI0bC0xMi45LTEuODAxIiBmaWxsPSJ3aGl0ZSIvPjwvc3ZnPg=='">
                                 <span class="download-btn-label">Windows</span>
                             </div>
                             <span class="download-btn-version" id="windows-installer-version">Loading...</span>
                         </a>
-                        <a href="#" class="download-portable-link" id="windows-portable-link">💼 Portable version (no install)</a>
+                        <a href="#" class="download-portable-link" id="windows-portable-link">💼 Portable version (no
+                            install)</a>
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
                         <a href="#" class="download-btn macos" id="macos-installer" data-type="installer">
                             <div class="download-btn-wrapper">
-                                <img src="https://img.icons8.com/ios-filled/100/ffffff/mac-logo.png" alt="macOS" class="download-btn-logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgZmlsbD0iIzAwMCIvPjxwYXRoIGQ9Ik0xOC43MSAxOS41Yy0uODMgMS4yNC0xLjcxIDIuNDUtMy4wNSAyLjQ3LTEuMzQuMDMtMS43Ny0uNzktMy4yOS0uNzktMS41MyAwLTIgLjc3LTMuMjcuODItMS4zMS4wNS0yLjMtMS4zMi0zLjE0LTIuNTNDNC4yNSAxNyAyLjk0IDEyLjQ1IDQuNyA5LjM5Yy44Ny0xLjUyIDIuNDMtMi40OCA0LjEyLTIuNTEgMS4yOC0uMDIgMi41Ljg3IDMuMjkuODcuNzggMCAyLjI2LTEuMDcgMy44MS0uOTEuNjUuMDMgMi40Ny4yNiAzLjY0IDEuOTgtLjA5LjA2LTIuMTcgMS4yOC0yLjE1IDMuODEuMDMgMy4wMiAyLjY1IDQuMDMgMi42OCA0LjA0LS4wMy4wNy0uNDIgMS40NC0xLjM4IDIuODNNMTMgMy41Yy43My0uODMgMS45NC0xLjQ2IDIuOTQtMS41LjEzIDEuMTctLjM0IDIuMzUtMS4wNCAzLjE5LS42OS44NS0xLjgzIDEuNTEtMi45NSAxLjQyLS4xNS0xLjE1LjQxLTIuMzUgMS4wNS0zLjExeiIgZmlsbD0id2hpdGUiLz48L3N2Zz4='">
+                                <img src="https://img.icons8.com/ios-filled/100/ffffff/mac-logo.png" alt="macOS"
+                                    class="download-btn-logo"
+                                    onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgZmlsbD0iIzAwMCIvPjxwYXRoIGQ9Ik0xOC43MSAxOS41Yy0uODMgMS4yNC0xLjcxIDIuNDUtMy4wNSAyLjQ3LTEuMzQuMDMtMS43Ny0uNzktMy4yOS0uNzktMS41MyAwLTIgLjc3LTMuMjcuODItMS4zMS4wNS0yLjMtMS4zMi0zLjE0LTIuNTNDNC4yNSAxNyAyLjk0IDEyLjQ1IDQuNyA5LjM5Yy44Ny0xLjUyIDIuNDMtMi40OCA0LjEyLTIuNTEgMS4yOC0uMDIgMi41Ljg3IDMuMjkuODcuNzggMCAyLjI2LTEuMDcgMy44MS0uOTEuNjUuMDMgMi40Ny4yNiAzLjY0IDEuOTgtLjA5LjA2LTIuMTcgMS4yOC0yLjE1IDMuODEuMDMgMy4wMiAyLjY1IDQuMDMgMi42OCA0LjA0LS4wMy4wNy0uNDIgMS40NC0xLjM4IDIuODNNMTMgMy41Yy43My0uODMgMS45NC0xLjQ2IDIuOTQtMS41LjEzIDEuMTctLjM0IDIuMzUtMS4wNCAzLjE5LS42OS44NS0xLjgzIDEuNTEtMi45NSAxLjQyLS4xNS0xLjE1LjQxLTIuMzUgMS4wNS0zLjExeiIgZmlsbD0id2hpdGUiLz48L3N2Zz4='">
                                 <span class="download-btn-label">macOS</span>
                             </div>
                             <span class="download-btn-version" id="macos-installer-version">Loading...</span>
                         </a>
-                        <span class="download-portable-link" style="opacity: 0.5; cursor: default;">💼 Portable (coming soon)</span>
+                        <span class="download-portable-link" style="opacity: 0.5; cursor: default;">💼 Portable (coming
+                            soon)</span>
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
                         <a href="#" class="download-btn linux" id="linux-installer" data-type="installer">
                             <div class="download-btn-wrapper">
-                                <img src="https://img.icons8.com/color/96/000000/linux.png" alt="Linux" class="download-btn-logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIGZpbGw9IiNGQ0M2MjQiLz48cGF0aCBkPSJNMTIuNTAzIDBjLS4xNTUgMC0uMzE1LjAwOC0uNDguMDIxLTQuMjI2LjMzMy0zLjEwNSA0LjgwNy0zLjE3IDYuMjk4LS4wNzYgMS4wOTItLjMgMS45NTMtMS4wNSAzLjAyLS44ODUgMS4wNTEtMi4xMjcgMi43NS0yLjcxNiA0LjUyMS0uMjc4LjgzMi0uNDEgMS42ODQtLjI4NyAyLjQ4OWEuNDI0LjQyNCAwIDAwLS4xMS4xMzVjLS4yNi4yNjgtLjQ1LjYtLjY2My44MzktLjE5OS4xOTktLjQ4NS4yNjctLjc5Ny40LS4zMTMuMTM2LS42NTguMjY5LS44NjQuNjgtLjA5LjE4OS0uMTM2LjM5NC0uMTMyLjYwMiAwIC4xOTkuMDI3LjQuMDU1LjUzNi4wNTguMzk5LjExNi43MjguMDQuOTctLjI0OS42OC0uMjggMS4xNDUtLjEwNiAxLjQ4NC4xNzQuMzM0LjUzNS40Ny45NC42MDEuODEuMiAxLjkxLjEzNSAyLjc3NC42LjkyNi40NjYgMS44NjYuNjcgMi42MTYuNDcuNTI2LS4xMTYuOTctLjQ2NCAxLjIwOC0uOTQ2LjU4Ny0uMDAzIDEuMjMtLjI2OSAyLjI2LS4zMzQuNjk5LS4wNTggMS41NzQuMjY3IDIuNTc3LjIuMDI1LjEzNC4wNjMuMTk4LjExNC4zMzNsLjAwMy4wMDNjLjM5MS43NzggMS4xMTMgMS4xMzIgMS44ODQgMS4wNzEuNzcxLS4wNiAxLjU5Mi0uNTM2IDIuMjU3LTEuMzA2LjYzMS0uNzY1IDEuNjgzLTEuMDg0IDIuMzc4LTEuNTAzLjM0OC0uMTk5LjYyOS0uNDY5LjY0OS0uODUzLjAyMy0uNC0uMi0uODExLS43MTQtMS4zNzZ2LS4wOTdsLS4wMDMtLjAwM2MtLjE3LS4yLS4yNS0uNTM1LS4zMzgtLjkyNi0uMDg1LS40MDEtLjE4Mi0uNzg2LS40OTItMS4wNDZoLS4wMDNjLS4wNTktLjA1NC0uMTIzLS4wNjctLjE4OC0uMTM1YS4zNTcuMzU3IDAgMDAtLjE5LS4wNjRjLjQzMS0xLjI3OC4yNjQtMi41NS0uMTczLTMuNjk0LS41MzMtMS40MS0xLjQ2NS0yLjYzOC0yLjE3NS0zLjQ4My0uNzk2LTEuMDA1LTEuNTc2LTEuOTU3LTEuNTYtMy4zNjguMDI2LTIuMTUyLjIzNi02LjEzMy0zLjU0NC02LjEzOXptLjUyOSAzLjQwNWguMDEzYy4yMTMgMCAuMzk2LjA2Mi41ODQuMTk4LjE5LjEzNS4zMy4zMzIuNDM4LjUzMy4xMDUuMjU5LjE1OC40NTkuMTY2LjcyNCAwLS4wMi4wMDYtLjA0LjAwNi0uMDZ2LjEwNWEuMDg2LjA4NiAwIDAxLS4wMDQtLjAyMWwtLjAwNC0uMDI0YTEuODA3IDEuODA3IDAgMDEtLjE1LjcwNi45NTMuOTUzIDAgMDEtLjIxMy4zMzVhLjcxLjcxIDAgMDAtLjA4OC0uMDQyYy0uMTA0LS4wNDUtLjE5OC0uMDY0LS4yODQtLjEzM2ExLjMxMiAxLjMxMiAwIDAwLS4yMi0uMDY2Yy4wNS0uMDYuMTQ2LS4xMzMuMTgzLS4xOThhLjA1My4wNTMgMCAwMC4wODgtLjQwMnYtLjAyYTEuMjEgMS4yMSAwIDAwLS4wNjEtLjRjLS4wNDUtLjEzNC0uMTAxLS4yLS4xODMtLjMzM2ExLjA4NC0uMDY2IDAgMDAtLjI2Ny0uMTMyaC0uMDE2Yy0uMDkzIDAtLjE3Ni4wMy0uMjYyLjEzMmEuOC44IDAgMDAtLjIwNS4zMzQgMS4xOCAxLjE4IDAgMDAtLjA5LjR2LjAxOWMuMDAyLjA4OS4wMDguMTc5LjAyLjI2Ny0uMTkzLS4wNjctLjQzOC0uMTM1LS42MDctLjIwMmExLjYzNSAxLjYzNSAwIDAxLS4wMTgtLjJ2LS4wMmExLjc3MiAxLjc3MiAwIDAxLjE1LS43NjhjLjA4Mi0uMjIuMjMyLS40MDYuNDMtLjUzM2EuOTg1Ljk4NSAwIDAxLjU5NC0uMnptLTIuOTYyLjA1OWguMDM2Yy4xNDIgMCAuMjcuMDQ4LjM5OS4xMzUuMTQ2LjEyOS4yNjQuMjg4LjM0NC40NjUuMDkuMTk5LjE0LjQuMTUzLjY2N2wuMDAyLjAyMnYuMDIxYTEuNzg4IDEuNzg4IDAgMDEtLjA0MS4zMzJjLS4wNzQtLjAwNi0uMTQ4LS4wMTctLjIxOS0uMDE3aC0uMDM2Yy0uMTM3IDAtLjI3LjAxNC0uMzk3LjA0LS4wMDktLjA2Ny0uMDE0LS4xMzQtLjAxNC0uMnYtLjAyYS45Ni45NiAwIDAwLS4wNDgtLjMzMmEuNzcuNzcgMCAwMC0uMTQ3LS4yNjhjLS4wNTYtLjA2LS4xMjYtLjA2Ni0uMi0uMDY2aC0uMDE1Yy0uMDYgMC0uMTIgMC0uMTguMDY2YS44MzUuODM1IDAgMDAtLjE2LjJhLjkxLjkxIDAgMDAtLjA4NS4yNjd2LjAyNGwtLjAwMi4wMmExLjMyIDEuMzIgMCAwMC0uMDAyLjEzM2MtLjIyLjA4OS0uNDQuMTkzLS42NTIuMzMzYTEuNTQyIDEuNTQyIDAgMDEtLjAxNS0uMmMwLS4wMiAwLS4wNC4wMDItLjA2VjQuMmMuMDE1LS4yNjcuMDYyLS40NjguMTUtLjY2Ny4wOTktLjE5OC4yMTgtLjMzMi4zNjQtLjQ2NS4xMzMtLjEwMS4yNzEtLjEzNS40MTItLjEzNXptMS4xMzYgMS43NjZjLjE1IDAgLjI5Ni4wMi40MzYuMDZhLjAyMy4wMTMgMCAwMS4wNjkuMDRhLjc3My43NzMgMCAwMS4wODUuMDQyLjgwMy44MDMgMCAwMS4yOS4zMzJjLjA3OC4xMzQuMTE3LjI3LjExNy40MDJ2LjAyYzAgLjA2Ni0uMDAzLjEzMy0uMDEuMmExLjE5My0uMDY2IDAgMDAtLjYwNy4yLjAxMy0uMDY3LjAxOS0uMTM0LjAxOS0uMnYtLjAyYS44Ny44NyAwIDAwLS4wNjgtLjMzMmEuNjg5LjY4OSAwIDAwLS4xNy0uMjY3Yy0uMDYzLS4wNjUtLjEzLS4wNjUtLjE5Mi0uMDY1aC0uMDJjLS4xMzIgMC0uMTk4LjA2NS0uMjcuMDY1LS4wMDYuMDA0LS4wMS4wMDctLjAxMy4wMWEuMDYzLS4wNjcgMCAwMC0uMTU1LjI2OGEuOTM4LjkzOCAwIDAwLS4wNjguMzMzdi4wMmMwIC4wNjYuMDAzLjEzMy4wMDguMi0uMjIuMDg4LS40NDEuMTkzLS42NTIuMzMzLS4wMTItLjA2Ny0uMDE4LS4xMzQtLjAxOC0uMnYtLjAyYzAtLjI2Ni4wNS0uNDY3LjE0OC0uNjY2LjEwNC0uMTk5LjIyNi0uMzMyLjM3Ni0uNDY2LjE2MS0uMTM1LjMxLS4xOTkuNDc4LS4xOTloLjAzNmwtLjAwMy0uMDAxeiIgZmlsbD0iIzAwMCIvPjwvc3ZnPg=='">
+                                <img src="https://img.icons8.com/color/96/000000/linux.png" alt="Linux"
+                                    class="download-btn-logo"
+                                    onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIGZpbGw9IiNGQ0M2MjQiLz48cGF0aCBkPSJNMTIuNTAzIDBjLS4xNTUgMC0uMzE1LjAwOC0uNDguMDIxLTQuMjI2LjMzMy0zLjEwNSA0LjgwNy0zLjE3IDYuMjk4LS4wNzYgMS4wOTItLjMgMS45NTMtMS4wNSAzLjAyLS44ODUgMS4wNTEtMi4xMjcgMi43NS0yLjcxNiA0LjUyMS0uMjc4LjgzMi0uNDEgMS42ODQtLjI4NyAyLjQ4OWEuNDI0LjQyNCAwIDAwLS4xMS4xMzVjLS4yNi4yNjgtLjQ1LjYtLjY2My44MzktLjE5OS4xOTktLjQ4NS4yNjctLjc5Ny40LS4zMTMuMTM2LS42NTguMjY5LS44NjQuNjgtLjA5LjE4OS0uMTM2LjM5NC0uMTMyLjYwMiAwIC4xOTkuMDI3LjQuMDU1LjUzNi4wNTguMzk5LjExNi43MjguMDQuOTctLjI0OS42OC0uMjggMS4xNDUtLjEwNiAxLjQ4NC4xNzQuMzM0LjUzNS40Ny45NC42MDEuODEuMiAxLjkxLjEzNSAyLjc3NC42LjkyNi40NjYgMS44NjYuNjcgMi42MTYuNDcuNTI2LS4xMTYuOTctLjQ2NCAxLjIwOC0uOTQ2LjU4Ny0uMDAzIDEuMjMtLjI2OSAyLjI2LS4zMzQuNjk5LS4wNTggMS41NzQuMjY3IDIuNTc3LjIuMDI1LjEzNC4wNjMuMTk4LjExNC4zMzNsLjAwMy4wMDNjLjM5MS43NzggMS4xMTMgMS4xMzIgMS44ODQgMS4wNzEuNzcxLS4wNiAxLjU5Mi0uNTM2IDIuMjU3LTEuMzA2LjYzMS0uNzY1IDEuNjgzLTEuMDg0IDIuMzc4LTEuNTAzLjM0OC0uMTk5LjYyOS0uNDY5LjY0OS0uODUzLjAyMy0uNC0uMi0uODExLS43MTQtMS4zNzZ2LS4wOTdsLS4wMDMtLjAwM2MtLjE3LS4yLS4yNS0uNTM1LS4zMzgtLjkyNi0uMDg1LS40MDEtLjE4Mi0uNzg2LS40OTItMS4wNDZoLS4wMDNjLS4wNTktLjA1NC0uMTIzLS4wNjctLjE4OC0uMTM1YS4zNTcuMzU3IDAgMDAtLjE5LS4wNjRjLjQzMS0xLjI3OC4yNjQtMi41NS0uMTczLTMuNjk0LS41MzMtMS40MS0xLjQ2NS0yLjYzOC0yLjE3NS0zLjQ4My0uNzk2LTEuMDA1LTEuNTc2LTEuOTU3LTEuNTYtMy4zNjguMDI2LTIuMTUyLjIzNi02LjEzMy0zLjU0NC02LjEzOXptLjUyOSAzLjQwNWguMDEzYy4yMTMgMCAuMzk2LjA2Mi41ODQuMTk4LjE5LjEzNS4zMy4zMzIuNDM4LjUzMy4xMDUuMjU5LjE1OC40NTkuMTY2LjcyNCAwLS4wMi4wMDYtLjA0LjAwNi0uMDZ2LjEwNWEuMDg2LjA4NiAwIDAxLS4wMDQtLjAyMWwtLjAwNC0uMDI0YTEuODA3IDEuODA3IDAgMDEtLjE1LjcwNi45NTMuOTUzIDAgMDEtLjIxMy4zMzVhLjcxLjcxIDAgMDAtLjA4OC0uMDQyYy0uMTA0LS4wNDUtLjE5OC0uMDY0LS4yODQtLjEzM2ExLjMxMiAxLjMxMiAwIDAwLS4yMi0uMDY2Yy4wNS0uMDYuMTQ2LS4xMzMuMTgzLS4xOThhLjA1My4wNTMgMCAwMC4wODgtLjQwMnYtLjAyYTEuMjEgMS4yMSAwIDAwLS4wNjEtLjRjLS4wNDUtLjEzNC0uMTAxLS4yLS4xODMtLjMzM2ExLjA4NC0uMDY2IDAgMDAtLjI2Ny0uMTMyaC0uMDE2Yy0uMDkzIDAtLjE3Ni4wMy0uMjYyLjEzMmEuOC44IDAgMDAtLjIwNS4zMzQgMS4xOCAxLjE4IDAgMDAtLjA5LjR2LjAxOWMuMDAyLjA4OS4wMDguMTc5LjAyLjI2Ny0uMTkzLS4wNjctLjQzOC0uMTM1LS42MDctLjIwMmExLjYzNSAxLjYzNSAwIDAxLS4wMTgtLjJ2LS4wMmExLjc3MiAxLjc3MiAwIDAxLjE1LS43NjhjLjA4Mi0uMjIuMjMyLS40MDYuNDMtLjUzM2EuOTg1Ljk4NSAwIDAxLjU5NC0uMnptLTIuOTYyLjA1OWguMDM2Yy4xNDIgMCAuMjcuMDQ4LjM5OS4xMzUuMTQ2LjEyOS4yNjQuMjg4LjM0NC40NjUuMDkuMTk5LjE0LjQuMTUzLjY2N2wuMDAyLjAyMnYuMDIxYTEuNzg4IDEuNzg4IDAgMDEtLjA0MS4zMzJjLS4wNzQtLjAwNi0uMTQ4LS4wMTctLjIxOS0uMDE3aC0uMDM2Yy0uMTM3IDAtLjI3LjAxNC0uMzk3LjA0LS4wMDktLjA2Ny0uMDE0LS4xMzQtLjAxNC0uMnYtLjAyYS45Ni45NiAwIDAwLS4wNDgtLjMzMmEuNzcuNzcgMCAwMC0uMTQ3LS4yNjhjLS4wNTYtLjA2LS4xMjYtLjA2Ni0uMi0uMDY2aC0uMDE1Yy0uMDYgMC0uMTIgMC0uMTguMDY2YS44MzUuODM1IDAgMDAtLjE2LjJhLjkxLjkxIDAgMDAtLjA4NS4yNjd2LjAyNGwtLjAwMi4wMmExLjMyIDEuMzIgMCAwMC0uMDAyLjEzM2MtLjIyLjA4OS0uNDQuMTkzLS42NTIuMzMzYTEuNTQyIDEuNTQyIDAgMDEtLjAxNS0uMmMwLS4wMiAwLS4wNC4wMDItLjA2VjQuMmMuMDE1LS4yNjcuMDYyLS40NjguMTUtLjY2Ny4wOTktLjE5OC4yMTgtLjMzMi4zNjQtLjQ2NS4xMzMtLjEwMS4yNzEtLjEzNS40MTItLjEzNXptMS4xMzYgMS43NjZjLjE1IDAgLjI5Ni4wMi40MzYuMDZhLjAyMy4wMTMgMCAwMS4wNjkuMDRhLjc3My43NzMgMCAwMS4wODUuMDQyLjgwMy44MDMgMCAwMS4yOS4zMzJjLjA3OC4xMzQuMTE3LjI3LjExNy40MDJ2LjAyYzAgLjA2Ni0uMDAzLjEzMy0uMDEuMmExLjE5My0uMDY2IDAgMDAtLjYwNy4yLjAxMy0uMDY3LjAxOS0uMTM0LjAxOS0uMnYtLjAyYS44Ny44NyAwIDAwLS4wNjgtLjMzMmEuNjg5LjY4OSAwIDAwLS4xNy0uMjY3Yy0uMDYzLS4wNjUtLjEzLS4wNjUtLjE5Mi0uMDY1aC0uMDJjLS4xMzIgMC0uMTk4LjA2NS0uMjcuMDY1LS4wMDYuMDA0LS4wMS4wMDctLjAxMy4wMWEuMDYzLS4wNjcgMCAwMC0uMTU1LjI2OGEuOTM4LjkzOCAwIDAwLS4wNjguMzMzdi4wMmMwIC4wNjYuMDAzLjEzMy4wMDguMi0uMjIuMDg4LS40NDEuMTkzLS42NTIuMzMzLS4wMTItLjA2Ny0uMDE4LS4xMzQtLjAxOC0uMnYtLjAyYzAtLjI2Ni4wNS0uNDY3LjE0OC0uNjY2LjEwNC0uMTk5LjIyNi0uMzMyLjM3Ni0uNDY2LjE2MS0uMTM1LjMxLS4xOTkuNDc4LS4xOTloLjAzNmwtLjAwMy0uMDAxeiIgZmlsbD0iIzAwMCIvPjwvc3ZnPg=='">
                                 <span class="download-btn-label">Linux</span>
                             </div>
                             <span class="download-btn-version" id="linux-installer-version">Loading...</span>
                         </a>
-                        <span class="download-portable-link" style="opacity: 0.5; cursor: default;">💼 Portable (coming soon)</span>
+                        <span class="download-portable-link" style="opacity: 0.5; cursor: default;">💼 Portable (coming
+                            soon)</span>
                     </div>
                 </div>
                 <p class="download-note">
-                    📦 No Python required — everything bundled! • 
-                    <a href="https://github.com/flexfinRTP/telecode/releases">All Releases</a> • 
+                    📦 No Python required — everything bundled! •
+                    <a href="https://github.com/flexfinRTP/telecode/releases">All Releases</a> •
                     <a href="https://github.com/flexfinRTP/telecode">View Source</a>
                 </p>
             </div>
@@ -1430,23 +1343,23 @@
 
     <!-- How It Works -->
     <section class="how-it-works" id="how-it-works">
-        <div class="section-header reveal">
+        <div class="section-header">
             <h2>How It Works</h2>
             <p>From voice to code in three simple steps.</p>
         </div>
 
         <div class="steps">
-            <div class="step reveal">
+            <div class="step">
                 <div class="step-number">1</div>
                 <h3>Send a Voice Note</h3>
                 <p>Hold the mic in Telegram and speak your coding request. TeleCode transcribes it instantly.</p>
             </div>
-            <div class="step reveal">
+            <div class="step">
                 <div class="step-number">2</div>
                 <h3>AI Writes Your Code</h3>
                 <p>Your prompt is sent to Cursor AI. Watch progress screenshots as it generates code.</p>
             </div>
-            <div class="step reveal">
+            <div class="step">
                 <div class="step-number">3</div>
                 <h3>Review & Accept</h3>
                 <p>Get a diff summary, approve changes, and push — all from your phone.</p>
@@ -1456,54 +1369,68 @@
 
     <!-- Features Section -->
     <section class="features" id="features">
-        <div class="section-header reveal">
+        <div class="section-header">
             <h2>Why Developers Love TeleCode</h2>
-            <p>Stop missing out. Join developers who code from anywhere, save on API costs, and never feel disconnected from their work.</p>
+            <p>Stop missing out. Join developers who code from anywhere, save on API costs, and never feel disconnected
+                from their work.</p>
         </div>
 
         <div class="features-grid">
-            <div class="feature-card reveal">
+            <div class="feature-card">
                 <div class="feature-icon">🎤</div>
                 <h3>Voice-to-Code (Telegram's Secret Weapon)</h3>
-                <p>Stop typing. Just speak. Voice-to-code is huge on Telegram — developers are already doing it. Join the movement. Speak your ideas, watch them become code. It's faster, more natural, and 100% free.</p>
+                <p>Stop typing. Just speak. Voice-to-code is huge on Telegram — developers are already doing it. Join
+                    the movement. Speak your ideas, watch them become code. It's faster, more natural, and 100% free.
+                </p>
             </div>
-            <div class="feature-card reveal">
+            <div class="feature-card">
                 <div class="feature-icon">💰</div>
                 <h3>Sick of Paying for API Costs?</h3>
-                <p>Stop bleeding money on agent APIs. TeleCode bakes everything into your existing Cursor plan. No OpenAI keys. No surprise bills. Just code. Your wallet will thank you.</p>
+                <p>Stop bleeding money on agent APIs. TeleCode bakes everything into your existing Cursor plan. No
+                    OpenAI keys. No surprise bills. Just code. Your wallet will thank you.</p>
             </div>
-            <div class="feature-card reveal">
+            <div class="feature-card">
                 <div class="feature-icon">🌍</div>
                 <h3>Code From Anywhere (Leave Your PC On)</h3>
-                <p>Leave your laptop on with display off. Code from the train, the gym, the coffee shop. Run Cursor like you're sitting at home — because you are. pyautogui works perfectly even when monitor is off. Your PC stays safe, you stay productive. Freedom, unlocked.</p>
+                <p>Leave your laptop on with display off. Code from the train, the gym, the coffee shop. Run Cursor like
+                    you're sitting at home — because you are. pyautogui works perfectly even when monitor is off. Your
+                    PC stays safe, you stay productive. Freedom, unlocked.</p>
             </div>
-            <div class="feature-card reveal">
+            <div class="feature-card">
                 <span class="feature-new">New!</span>
                 <div class="feature-icon">📸</div>
                 <h3>See Your Work Live</h3>
-                <p>Get real-time screenshots of Cursor while AI works. Never wonder "what's happening?" — see every change as it happens, right in Telegram. Feel connected to your code even when you're miles away.</p>
+                <p>Get real-time screenshots of Cursor while AI works. Never wonder "what's happening?" — see every
+                    change as it happens, right in Telegram. Feel connected to your code even when you're miles away.
+                </p>
             </div>
-            <div class="feature-card reveal">
+            <div class="feature-card">
                 <div class="feature-icon">🤖</div>
                 <h3>All Your Favorite AI Models</h3>
-                <p>Claude Opus, Sonnet, Haiku, Gemini, GPT-4.1 — they're all here. Switch with one command. No compromises. Use the model that fits your task. It's your choice, always.</p>
+                <p>Claude Opus, Sonnet, Haiku, Gemini, GPT-4.1 — they're all here. Switch with one command. No
+                    compromises. Use the model that fits your task. It's your choice, always.</p>
             </div>
-            <div class="feature-card reveal">
+            <div class="feature-card">
                 <div class="feature-icon">✅</div>
                 <h3>Cursor's Workflow, Your Way</h3>
-                <p>Keep All, Undo All, Continue, Run, Stop — all the buttons you know and love. Familiar controls mean zero learning curve. It just works, exactly like you expect.</p>
+                <p>Keep All, Undo All, Continue, Run, Stop — all the buttons you know and love. Familiar controls mean
+                    zero learning curve. It just works, exactly like you expect.</p>
             </div>
-            <div class="feature-card reveal feature-card-wide">
+            <div class="feature-card feature-card-wide">
                 <div class="feature-icon">🔓</div>
                 <h3>100% Open Source (Trust, But Verify)</h3>
-                <p><strong>Why open source matters:</strong> In a world where AI tools are black boxes, TeleCode is different. Every line is visible. Every function is auditable. No hidden telemetry. No secret data collection. No vendor lock-in. You can verify security, customize behavior, and contribute improvements. MIT licensed means you own it — forever. This isn't just transparency; it's freedom. Your code, your control, your peace of mind.</p>
+                <p><strong>Why open source matters:</strong> In a world where AI tools are black boxes, TeleCode is
+                    different. Every line is visible. Every function is auditable. No hidden telemetry. No secret data
+                    collection. No vendor lock-in. You can verify security, customize behavior, and contribute
+                    improvements. MIT licensed means you own it — forever. This isn't just transparency; it's freedom.
+                    Your code, your control, your peace of mind.</p>
             </div>
         </div>
     </section>
 
     <!-- Terminal Demo -->
     <section class="terminal-section">
-        <div class="terminal-wrapper reveal">
+        <div class="terminal-wrapper">
             <div class="terminal">
                 <div class="terminal-header">
                     <span class="terminal-dot red"></span>
@@ -1523,7 +1450,8 @@
                     <div class="terminal-output">✓ Python 3.10+ found</div>
                     <div class="terminal-output">✓ Dependencies installed</div>
                     <div class="terminal-output">✓ Configuration GUI launched</div>
-                    <div class="terminal-output" style="color: var(--emerald-light);">🚀 TeleCode is ready! Send /start in Telegram</div>
+                    <div class="terminal-output" style="color: var(--emerald-light);">🚀 TeleCode is ready! Send /start
+                        in Telegram</div>
                     <div class="terminal-line" style="margin-top: 0.5rem;">
                         <span class="terminal-prompt">$</span>
                         <span class="terminal-cursor"></span>
@@ -1535,16 +1463,16 @@
 
     <!-- Security Section -->
     <section class="security" id="security">
-        <div class="section-header reveal">
+        <div class="section-header">
             <h2>Zero-Trust Security</h2>
             <p>Built with security as the #1 priority. OWASP compliant.</p>
         </div>
 
         <div class="security-grid">
-            <div class="security-item reveal">
+            <div class="security-item">
                 <div class="security-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                     </svg>
                 </div>
                 <div>
@@ -1552,13 +1480,13 @@
                     <p>Bot token stored in encrypted vault (DPAPI/Keychain)</p>
                 </div>
             </div>
-            <div class="security-item reveal">
+            <div class="security-item">
                 <div class="security-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                        <circle cx="9" cy="7" r="4"/>
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                     </svg>
                 </div>
                 <div>
@@ -1566,11 +1494,11 @@
                     <p>Only your Telegram ID can control the bot</p>
                 </div>
             </div>
-            <div class="security-item reveal">
+            <div class="security-item">
                 <div class="security-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                        <polyline points="22 4 12 14.01 9 11.01"/>
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
                     </svg>
                 </div>
                 <div>
@@ -1578,10 +1506,10 @@
                     <p>Multi-layer protection blocks malicious prompts</p>
                 </div>
             </div>
-            <div class="security-item reveal">
+            <div class="security-item">
                 <div class="security-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 3h18v18H3zM21 9H3M9 21V9"/>
+                        <path d="M3 3h18v18H3zM21 9H3M9 21V9" />
                     </svg>
                 </div>
                 <div>
@@ -1589,11 +1517,11 @@
                     <p>All operations restricted to your dev folder</p>
                 </div>
             </div>
-            <div class="security-item reveal">
+            <div class="security-item">
                 <div class="security-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                     </svg>
                 </div>
                 <div>
@@ -1601,13 +1529,13 @@
                     <p>Uses Telegram long-polling (outbound only)</p>
                 </div>
             </div>
-            <div class="security-item reveal">
+            <div class="security-item">
                 <div class="security-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                        <polyline points="14 2 14 8 20 8"/>
-                        <line x1="16" y1="13" x2="8" y2="13"/>
-                        <line x1="16" y1="17" x2="8" y2="17"/>
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
                     </svg>
                 </div>
                 <div>
@@ -1620,16 +1548,17 @@
 
     <!-- Open Source -->
     <section class="open-source">
-        <div class="open-source-card reveal">
+        <div class="open-source-card">
             <h2>🔓 100% Open Source</h2>
             <p>
-                TeleCode is fully open source under the MIT License. 
-                Inspect every line of code, verify there are no backdoors, 
+                TeleCode is fully open source under the MIT License.
+                Inspect every line of code, verify there are no backdoors,
                 and modify it to suit your needs. Trust, but verify.
             </p>
             <a href="https://github.com/flexfinRTP/telecode" target="_blank" class="github-btn">
                 <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    <path
+                        d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                 </svg>
                 View on GitHub
             </a>
@@ -1638,38 +1567,47 @@
 
     <!-- Checksum Section -->
     <section class="checksum" id="verify">
-        <div class="checksum-wrapper reveal">
+        <div class="checksum-wrapper">
             <div class="checksum-header">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    <polyline points="9 12 11 14 15 10"/>
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    <polyline points="9 12 11 14 15 10" />
                 </svg>
                 <h3>Verify Your Download</h3>
             </div>
 
             <div class="checksum-explain">
-                <strong>What's a checksum?</strong> It's like a fingerprint for a file. 
-                After downloading, run a command to generate your file's fingerprint 
-                and compare it to ours. If they match, your download is authentic and wasn't 
+                <strong>What's a checksum?</strong> It's like a fingerprint for a file.
+                After downloading your platform's installer, run a command to generate your file's fingerprint
+                and compare it to ours. If they match, your download is authentic and wasn't
                 tampered with. If they don't match, delete the file and re-download.
+                <br><br>
+                <strong>Note:</strong> Checksums are updated with each release. See the <a href="https://github.com/flexfinRTP/telecode/releases/latest" target="_blank" style="color: var(--emerald-primary); font-weight: 600;">latest GitHub release</a> for the most current checksums.
             </div>
 
             <div class="checksum-box">
-                <div class="checksum-label">SHA-256 • main.py</div>
-                <div class="checksum-value">443D7A99EDD61700159C204218A339224EEB8CB162D55A9AA57AB0CAF78474F3</div>
+                <div class="checksum-label">SHA-256 • Windows Installer (.exe)</div>
+                <div class="checksum-value" id="checksum-windows">Check GitHub release for latest checksum</div>
             </div>
 
             <div class="checksum-box">
-                <div class="checksum-label">SHA-256 • requirements.txt</div>
-                <div class="checksum-value">2DD37D4C5952CCE09B47A2FA93EA77E58ADE195D84F23CF107ECEC0DEFF85E98</div>
+                <div class="checksum-label">SHA-256 • macOS Installer (.dmg)</div>
+                <div class="checksum-value" id="checksum-macos">Check GitHub release for latest checksum</div>
+            </div>
+
+            <div class="checksum-box">
+                <div class="checksum-label">SHA-256 • Linux Package (.tar.gz)</div>
+                <div class="checksum-value" id="checksum-linux">Check GitHub release for latest checksum</div>
             </div>
 
             <div class="checksum-howto">
                 <strong>Verify after download:</strong><br><br>
                 <span class="cmd"># Windows (PowerShell)</span><br>
-                Get-FileHash main.py -Algorithm SHA256<br><br>
-                <span class="cmd"># macOS / Linux</span><br>
-                sha256sum main.py
+                Get-FileHash TeleCode_Setup_*.exe -Algorithm SHA256<br><br>
+                <span class="cmd"># macOS</span><br>
+                shasum -a 256 TeleCode_*.dmg<br><br>
+                <span class="cmd"># Linux</span><br>
+                sha256sum TeleCode_*_Linux.tar.gz
             </div>
         </div>
     </section>
@@ -1681,93 +1619,159 @@
         <p class="footer-sub">Voice-to-code • Works on any device • Uses your existing Cursor plan</p>
         <div class="footer-links">
             <a href="https://github.com/flexfinRTP/telecode">GitHub</a>
-            <a href="https://github.com/flexfinRTP/telecode/blob/main/LICENSE">MIT License</a>
+            <a href="https://github.com/flexfinRTP/telecode/blob/master/LICENSE">MIT License</a>
             <!-- <a href="https://github.com/flexfinRTP/telecode/blob/main/docs/SECURITY.md">Security</a> -->
-            <a href="https://github.com/flexfinRTP/telecode/blob/main/USER_GUIDE.md">User Guide</a>
+            <a href="https://github.com/flexfinRTP/telecode/blob/master/USER_GUIDE.md">User Guide</a>
+            <a href="mailto:genesis_app@outlook.com">Contact</a>
         </div>
-        <p class="footer-copy">© 2026 TeleCode • <span id="footer-version">v0.1.13</span></p>
+        <p class="footer-copy">© 2026 TeleCode • <span id="footer-version">v0.2.0</span></p>
     </footer>
 
     <script>
-        // Generate floating code particles - actual TeleCode commands
+        // Beautiful commands animation - optimized for performance
         const particles = document.getElementById('particles');
         const codeSnippets = [
-            '/ai', '/status', '/diff', '/push', '/pull', '/commit',
-            '/cd', '/ls', '/read', '/model', '/cursor', '/create',
-            '/revert', '/log', '/branch', '/pwd', '/info', '/help',
-            '/start', '/ai accept', '/ai reject', '/ai mode'
+            // Git Operations
+            '/status', '/diff', '/push', '/pull', '/commit', '/revert', '/log', '/branch',
+            // Navigation
+            '/sandbox', '/sandboxes', '/ls', '/read', '/pwd', '/cd',
+            // Project Creation
+            '/create',
+            // Cursor IDE Control
+            '/cursor', '/cursor open', '/cursor status',
+            // AI / Cursor Commands
+            '/ai', '/ai accept', '/ai reject', '/ai continue', '/ai stop', '/ai status', '/ai mode', '/ai mode agent', '/ai mode chat',
+            // Model Selection
+            '/model', '/model opus', '/model sonnet', '/model haiku', '/model gemini', '/model gpt', '/models',
+            // System
+            '/start', '/help', '/info'
         ];
 
+        // Optimized particle system - performance-focused
+        const MAX_PARTICLES = 8;
+        let activeParticles = 0;
+        const particlePool = [];
+
         function createParticle() {
-            const particle = document.createElement('div');
-            particle.className = 'particle';
+            if (activeParticles >= MAX_PARTICLES) return;
+            if (!particles) return;
+
+            let particle = particlePool.find(p => !p.parentElement);
+            if (!particle) {
+                particle = document.createElement('div');
+                particle.className = 'particle';
+                particles.appendChild(particle);
+                particlePool.push(particle);
+            }
+
+            // Reset and configure particle
             particle.textContent = codeSnippets[Math.floor(Math.random() * codeSnippets.length)];
-            particle.style.left = Math.random() * 100 + '%';
-            particle.style.animationDuration = (25 + Math.random() * 15) + 's';
-            particle.style.animationDelay = Math.random() * 5 + 's';
-            particles.appendChild(particle);
+            const leftPercent = Math.random() * 100;
+            particle.style.left = leftPercent + '%';
+            particle.style.top = '';
+            particle.style.bottom = '';
+            
+            // Reset animation completely
+            particle.style.animation = 'none';
+            particle.style.animationName = '';
+            particle.style.animationDuration = '';
+            particle.style.animationDelay = '';
+            particle.style.opacity = '';
+            particle.style.transform = '';
+            
+            // Force reflow to reset state
+            void particle.offsetHeight;
+            
+            // Apply fresh animation
+            const duration = 30 + Math.random() * 20;
+            particle.style.animation = `rise ${duration}s linear`;
+            particle.style.animationDelay = Math.random() * 2 + 's';
+            activeParticles++;
 
-            // Remove after animation
-            setTimeout(() => particle.remove(), 40000);
+            // Cleanup after animation
+            setTimeout(() => {
+                if (particle && particle.parentElement) {
+                    particle.style.animation = 'none';
+                    activeParticles--;
+                }
+            }, (duration + 5) * 1000);
         }
 
-        // Create initial particles
-        for (let i = 0; i < 15; i++) {
-            setTimeout(createParticle, i * 1000);
+        // Start animation immediately and continuously
+        function initParticles() {
+            if (!particles) {
+                console.warn('Particles container not found');
+                return;
+            }
+            
+            // Create initial particles immediately
+            createParticle();
+            createParticle();
+            
+            // Create more particles with delays
+            for (let i = 0; i < 4; i++) {
+                setTimeout(() => createParticle(), (i + 1) * 1500);
+            }
+            
+            // Keep creating new particles
+            setInterval(() => {
+                if (activeParticles < MAX_PARTICLES) {
+                    createParticle();
+                }
+            }, 8000);
         }
 
-        // Keep creating particles (slower)
-        setInterval(createParticle, 4000);
+        // Start when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initParticles);
+        } else {
+            // Small delay to ensure DOM is fully ready
+            setTimeout(initParticles, 100);
+        }
 
-        // Nav scroll effect
+        // Optimized nav scroll effect with requestAnimationFrame
         const nav = document.getElementById('nav');
-        window.addEventListener('scroll', () => {
+        let ticking = false;
+        function updateNav() {
             if (window.scrollY > 50) {
                 nav.classList.add('scrolled');
             } else {
                 nav.classList.remove('scrolled');
             }
-        });
+            ticking = false;
+        }
+        window.addEventListener('scroll', () => {
+            if (!ticking) {
+                window.requestAnimationFrame(updateNav);
+                ticking = true;
+            }
+        }, { passive: true });
 
-        // Scroll reveal animation
-        const revealElements = document.querySelectorAll('.reveal');
-        const revealOnScroll = () => {
-            revealElements.forEach(el => {
-                const rect = el.getBoundingClientRect();
-                if (rect.top < window.innerHeight - 100) {
-                    el.classList.add('active');
-                }
-            });
-        };
-
-        window.addEventListener('scroll', revealOnScroll);
-        window.addEventListener('load', revealOnScroll);
-        
         // Fetch latest release from GitHub and populate download links
         async function loadReleases() {
             try {
                 const response = await fetch('https://api.github.com/repos/flexfinRTP/telecode/releases/latest');
                 if (!response.ok) throw new Error('Failed to fetch release');
-                
+
                 const release = await response.json();
                 const version = release.tag_name.replace('v', '');
                 const versionDisplay = release.tag_name;
-                
+
                 // Update version tag
                 const versionTag = document.getElementById('version-tag');
                 if (versionTag) {
                     versionTag.textContent = `${versionDisplay} — Latest Release`;
                 }
-                
+
                 // Update footer version
                 const footerVersion = document.getElementById('footer-version');
                 if (footerVersion) {
                     footerVersion.textContent = versionDisplay;
                 }
-                
+
                 // Find assets
                 const assets = release.assets || [];
-                
+
                 // Helper to find asset by pattern
                 const findAsset = (patterns) => {
                     for (const pattern of patterns) {
@@ -1776,7 +1780,7 @@
                     }
                     return null;
                 };
-                
+
                 // Windows Installer
                 const winInstaller = findAsset([
                     /TeleCode_Setup.*Windows\.exe$/i,
@@ -1789,7 +1793,7 @@
                         document.getElementById('windows-installer-version').textContent = versionDisplay;
                     }
                 }
-                
+
                 // Windows Portable (standalone EXE, not installer)
                 const winPortable = findAsset([
                     /^TeleCode\.exe$/i,
@@ -1807,7 +1811,7 @@
                         portableLink.href = `https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode.exe`;
                     }
                 }
-                
+
                 // macOS Installer
                 const macInstaller = findAsset([
                     /TeleCode.*macOS\.dmg$/i,
@@ -1820,7 +1824,7 @@
                         document.getElementById('macos-installer-version').textContent = versionDisplay;
                     }
                 }
-                
+
                 // Linux Package
                 const linuxPackage = findAsset([
                     /TeleCode.*Linux.*\.tar\.gz$/i,
@@ -1834,21 +1838,21 @@
                         document.getElementById('linux-installer-version').textContent = versionDisplay;
                     }
                 }
-                
+
             } catch (error) {
                 console.error('Failed to load releases:', error);
                 // Fallback to hardcoded links
-                const fallbackVersion = 'v0.1.13';
+                const fallbackVersion = 'v0.2.0';
                 const versionTag = document.getElementById('version-tag');
                 if (versionTag) {
                     versionTag.textContent = `${fallbackVersion} — Latest Release`;
                 }
-                
+
                 const footerVersion = document.getElementById('footer-version');
                 if (footerVersion) {
                     footerVersion.textContent = fallbackVersion;
                 }
-                
+
                 document.getElementById('windows-installer').href = `https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_Setup_${fallbackVersion.replace('v', '')}_Windows.exe`;
                 const portableLinkFallback = document.getElementById('windows-portable-link');
                 if (portableLinkFallback) {
@@ -1856,7 +1860,7 @@
                 }
                 document.getElementById('macos-installer').href = `https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_${fallbackVersion.replace('v', '')}_macOS.dmg`;
                 document.getElementById('linux-installer').href = `https://github.com/flexfinRTP/telecode/releases/latest/download/TeleCode_${fallbackVersion.replace('v', '')}_Linux.tar.gz`;
-                
+
                 // Update version displays
                 document.querySelectorAll('.download-btn-version').forEach(el => {
                     if (el.textContent === 'Loading...') {
@@ -1865,9 +1869,10 @@
                 });
             }
         }
-        
+
         // Load releases on page load
         loadReleases();
     </script>
 </body>
+
 </html>

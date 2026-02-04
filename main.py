@@ -601,7 +601,7 @@ For more information, see the README.md file.
     parser.add_argument(
         "--version", "-v",
         action="version",
-        version="TeleCode v0.1.13"
+        version="TeleCode v0.2.0"
     )
     
     parser.add_argument(

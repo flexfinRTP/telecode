@@ -221,7 +221,7 @@ TeleCode follows [Semantic Versioning](https://semver.org/):
 | Bug fixes, minor improvements | Patch | v0.1.0 → v0.1.1 |
 | New features | Minor | v0.1.x → v0.2.0 |
 
-Current version: **v0.1.13**
+Current version: **v0.2.0**
 
 ---
 

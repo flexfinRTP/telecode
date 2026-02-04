@@ -4,12 +4,28 @@ TeleCode v0.1 - Model Configuration Module
 ============================================
 Handles AI model selection and per-user preferences.
 
+IMPORTANT: Cursor Pricing Model (2026)
+--------------------------------------
+As of June 2025, Cursor switched to API-based pricing:
+- ALL frontier models are available on ALL plans (free and paid)
+- Free tier (Hobby) has very limited usage credits
+- Paid plans include monthly usage credits ($20/month for Pro)
+
+Model Tier Classification:
+- FREE: Models that are cost-effective enough to use within free tier limits
+- PAID: Models that typically require a paid subscription for practical use
+
+This is a PRACTICAL distinction based on usage costs, not official Cursor categorization.
+
 Available Models:
-- Claude Opus 4.5 (paid, best reasoning)
-- Claude Sonnet 4.5 (paid, balanced)
-- Claude Haiku 4.5 (free tier)
-- Gemini 3 Flash (free, large context)
-- GPT-4.1 (paid, alternative)
+- Claude Opus 4.5 (paid tier - expensive, requires paid plan)
+- Claude Sonnet 4.5 (paid tier - moderate cost, requires paid plan)
+- Claude Haiku 4.5 (free tier - lower cost, practical for free tier)
+- Gemini 3 Flash (free tier - lower cost, large context)
+- Gemini 3 Pro (paid tier - higher cost, requires paid plan)
+- GPT models (paid tier - requires paid plan)
+- Meta Llama 3.1 (free tier - open-source, typically free)
+- xAI Grok (paid tier - requires paid plan)
 
 Security: Model names are validated against whitelist.
 ============================================
@@ -27,7 +43,16 @@ logger = logging.getLogger("telecode.model_config")
 
 
 class ModelTier(Enum):
-    """Model pricing tier."""
+    """
+    Model pricing tier.
+    
+    Note: This is a PRACTICAL classification based on usage costs:
+    - FREE: Cost-effective enough to use within Cursor's free tier limits
+    - PAID: Typically requires a paid Cursor subscription for practical use
+    
+    All models are technically available on all Cursor plans, but free tier
+    has very limited usage credits, making expensive models impractical.
+    """
     FREE = "free"
     PAID = "paid"
 
@@ -85,14 +110,50 @@ AVAILABLE_MODELS: Dict[str, AIModel] = {
         description="Large context, fast",
         emoji="⚡"
     ),
+    "geminipro": AIModel(
+        id="gemini-3-pro",
+        alias="geminipro",
+        display_name="Gemini 3 Pro",
+        tier=ModelTier.PAID,
+        context_window="1M",
+        description="Advanced reasoning, powerful",
+        emoji="🚀"
+    ),
     "gpt": AIModel(
-        id="gpt-4.1",
+        id="gpt-5.2",
         alias="gpt",
-        display_name="GPT-4.1",
+        display_name="GPT-5.2",
         tier=ModelTier.PAID,
         context_window="128K",
-        description="Alternative reasoning",
+        description="Latest OpenAI, best reasoning",
         emoji="🧠"
+    ),
+    "codex": AIModel(
+        id="gpt-5.2-codex",
+        alias="codex",
+        display_name="GPT-5.2 Codex",
+        tier=ModelTier.PAID,
+        context_window="128K",
+        description="Code-optimized, specialized",
+        emoji="💻"
+    ),
+    "llama": AIModel(
+        id="llama-3.1",
+        alias="llama",
+        display_name="Meta Llama 3.1",
+        tier=ModelTier.FREE,
+        context_window="128K",
+        description="Open-source, privacy-focused",
+        emoji="🦙"
+    ),
+    "grok": AIModel(
+        id="grok-beta",
+        alias="grok",
+        display_name="xAI Grok",
+        tier=ModelTier.PAID,
+        context_window="128K",
+        description="Alternative reasoning model",
+        emoji="🤖"
     ),
 }
 
@@ -295,20 +356,86 @@ class UserPreferences:
         if user_key not in self._prefs:
             self._prefs[user_key] = {}
         
+        # Check if model is actually changing
+        old_model = self._prefs[user_key].get("model")
+        model_changed = (old_model != model.alias)
+        
         # Update model
         self._prefs[user_key]["model"] = model.alias
+        
+        # Track when model was changed (only if it actually changed)
+        if model_changed:
+            from datetime import datetime
+            self._prefs[user_key]["model_changed_at"] = datetime.now().isoformat()
+            logger.info(f"User {user_id} switched to model: {model.alias} (was: {old_model})")
+        else:
+            logger.info(f"User {user_id} model unchanged: {model.alias}")
         
         # Save to disk
         if not self._save():
             return False, "Failed to save preference"
         
-        logger.info(f"User {user_id} switched to model: {model.alias}")
-        
         return True, f"Model changed to **{model.display_name}** {model.emoji}"
+    
+    def was_model_recently_changed(self, user_id: int, max_age_minutes: int = 5) -> bool:
+        """
+        Check if the user's model was recently changed.
+        
+        Args:
+            user_id: Telegram user ID
+            max_age_minutes: Maximum age in minutes to consider "recent" (default: 5)
+            
+        Returns:
+            True if model was changed within the last max_age_minutes
+        """
+        user_key = str(user_id)
+        
+        if user_key not in self._prefs:
+            return False
+        
+        user_data = self._prefs[user_key]
+        model_changed_at_str = user_data.get("model_changed_at")
+        
+        if not model_changed_at_str:
+            return False
+        
+        try:
+            from datetime import datetime, timedelta
+            model_changed_at = datetime.fromisoformat(model_changed_at_str)
+            age = datetime.now() - model_changed_at
+            return age <= timedelta(minutes=max_age_minutes)
+        except (ValueError, TypeError) as e:
+            logger.debug(f"Failed to parse model_changed_at timestamp: {e}")
+            return False
     
     def get_user_data(self, user_id: int) -> Dict[str, Any]:
         """Get all preferences for a user."""
         return self._prefs.get(str(user_id), {})
+    
+    def clear_model_changed_flag(self, user_id: int) -> bool:
+        """
+        Clear the model_changed_at timestamp after model has been changed in Cursor.
+        
+        This prevents the system from trying to change the model again on subsequent prompts.
+        
+        Args:
+            user_id: Telegram user ID
+            
+        Returns:
+            True if flag was cleared, False if it didn't exist
+        """
+        user_key = str(user_id)
+        
+        if user_key not in self._prefs:
+            return False
+        
+        if "model_changed_at" in self._prefs[user_key]:
+            del self._prefs[user_key]["model_changed_at"]
+            self._save()
+            logger.info(f"Cleared model_changed_at flag for user {user_id}")
+            return True
+        
+        return False
 
 
 # ==========================================

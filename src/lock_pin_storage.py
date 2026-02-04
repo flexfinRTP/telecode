@@ -44,9 +44,9 @@ try:
                 
                 # Store using same method as token vault
                 if IS_WINDOWS:
-                    success, msg = self._store_windows(pin_data)
+                    success, msg = self._store_windows(pin_data, is_password=False)
                 else:
-                    success, msg = self._store_encrypted_file(pin_data)
+                    success, msg = self._store_encrypted_file(pin_data, is_password=False)
                 
                 if success:
                     logger.info("Lock PIN stored securely")
@@ -69,7 +69,7 @@ try:
                 if IS_WINDOWS:
                     success, msg = self._store_windows(password_data, is_password=True)
                 else:
-                    success, msg = self._store_encrypted_file(password_data)
+                    success, msg = self._store_encrypted_file(password_data, is_password=True)
                 
                 if success:
                     logger.info("Lock password stored securely")
@@ -84,10 +84,15 @@ try:
         def retrieve_pin(self) -> Optional[str]:
             """Retrieve lock PIN."""
             try:
+                data = None
                 if IS_WINDOWS:
-                    data = self._retrieve_windows()
+                    # Try Windows DPAPI first
+                    data = self._retrieve_windows(is_password=False)
+                    # If that fails, try encrypted file fallback
+                    if not data:
+                        data = self._retrieve_encrypted_file(is_password=False)
                 else:
-                    data = self._retrieve_encrypted_file()
+                    data = self._retrieve_encrypted_file(is_password=False)
                 
                 if data and data.startswith("PIN:"):
                     return data[4:]  # Remove "PIN:" prefix
@@ -100,10 +105,15 @@ try:
         def retrieve_password(self) -> Optional[str]:
             """Retrieve lock password."""
             try:
+                data = None
                 if IS_WINDOWS:
+                    # Try Windows DPAPI first
                     data = self._retrieve_windows(is_password=True)
+                    # If that fails, try encrypted file fallback
+                    if not data:
+                        data = self._retrieve_encrypted_file(is_password=True)
                 else:
-                    data = self._retrieve_encrypted_file()
+                    data = self._retrieve_encrypted_file(is_password=True)
                 
                 if data and data.startswith("PASSWORD:"):
                     return data[9:]  # Remove "PASSWORD:" prefix
@@ -156,7 +166,7 @@ try:
                 return False, "Encryption failed"
             except Exception as e:
                 logger.warning(f"DPAPI failed: {e}")
-                return self._store_encrypted_file(data)
+                return self._store_encrypted_file(data, is_password=is_password)
         
         def _retrieve_windows(self, is_password: bool = False) -> Optional[str]:
             """Retrieve from Windows DPAPI."""
@@ -195,9 +205,9 @@ try:
                 return None
             except Exception as e:
                 logger.warning(f"DPAPI retrieve failed: {e}")
-                return self._retrieve_encrypted_file()
+                return self._retrieve_encrypted_file(is_password=is_password)
         
-        def _store_encrypted_file(self, data: str) -> Tuple[bool, str]:
+        def _store_encrypted_file(self, data: str, is_password: bool = False) -> Tuple[bool, str]:
             """Store in encrypted file (fallback)."""
             try:
                 import hashlib
@@ -214,18 +224,23 @@ try:
                     (key * ((len(data) // 32) + 1))[:len(data)]
                 ))
                 
-                vault_path = Path.home() / ".telecode_lock_pin"
+                # Use same naming pattern as Windows storage for consistency
+                account = self.KEY_ACCOUNT_PASSWORD if is_password else self.KEY_ACCOUNT
+                vault_path = Path.home() / f".telecode_lock_{account}"
                 vault_path.write_bytes(nonce + encrypted)
                 return True, "Stored securely"
             except Exception as e:
                 return False, f"Storage failed: {e}"
         
-        def _retrieve_encrypted_file(self) -> Optional[str]:
+        def _retrieve_encrypted_file(self, is_password: bool = False) -> Optional[str]:
             """Retrieve from encrypted file."""
             try:
                 import hashlib
                 
-                vault_path = Path.home() / ".telecode_lock_pin"
+                # Use same naming pattern as Windows storage for consistency
+                account = self.KEY_ACCOUNT_PASSWORD if is_password else self.KEY_ACCOUNT
+                vault_path = Path.home() / f".telecode_lock_{account}"
+                
                 if not vault_path.exists():
                     return None
                 

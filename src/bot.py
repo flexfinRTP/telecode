@@ -331,6 +331,7 @@ class TeleCodeBot:
             BotCommand("ls", "List files"),
             BotCommand("log", "Recent commits"),
             BotCommand("info", "System info"),
+            BotCommand("pin", "View or set lock PIN"),
         ]
         await self.app.bot.set_my_commands(commands)
     
@@ -1561,7 +1562,8 @@ Please try again with /create
             f"📤 **Sending to Cursor...**\n\n"
             f"🤖 **{current_model.display_name}**\n"
             f"📂 `{workspace_name}`\n\n"
-            f"📝 _{prompt[:100]}{'...' if len(prompt) > 100 else ''}_", 
+            f"📝 _{prompt[:100]}{'...' if len(prompt) > 100 else ''}_\n\n"
+            f"💡 **Note:** Make sure '{current_model.display_name}' is enabled in Cursor Settings > Models", 
             parse_mode="Markdown"
         )
         
@@ -1678,17 +1680,34 @@ Please try again with /create
         async def run_ai_work():
             """Run AI work in background - allows button callbacks to be processed independently."""
             try:
+                # Only change model if user just selected a new one (within last 5 minutes)
+                # Otherwise use normal flow (Cursor will use its current/default model)
+                model_to_use = None
+                should_clear_flag = False
+                if self.user_prefs.was_model_recently_changed(user_id, max_age_minutes=5):
+                    model_to_use = current_model.id
+                    should_clear_flag = True  # Clear flag after attempting change
+                    logger.info(f"Model was recently changed, will attempt to change to: {current_model.display_name}")
+                else:
+                    logger.info(f"Using normal flow - model not recently changed, Cursor will use current/default model")
+                
                 # Send prompt and wait for completion with live status updates
                 # Increased timeouts: 5 min max, 3s polls, 10 stable polls (30s), 15s min processing
                 result = await agent.send_prompt_and_wait(
                     prompt=prompt,
                     status_callback=status_callback,
-                    model=current_model.id,
+                    model=model_to_use,  # Only set if model was recently changed
                     timeout=300.0,           # 5 minutes max for complex prompts
                     poll_interval=3.0,       # Check every 3 seconds
                     stable_threshold=10,     # Need 10 stable polls (30s of no changes)
                     min_processing_time=15.0 # At least 15s before declaring done
                 )
+                
+                # Clear the "recently changed" flag after attempting model change
+                # This ensures we only try to change model once, not on every subsequent prompt
+                if should_clear_flag:
+                    self.user_prefs.clear_model_changed_flag(user_id)
+                    logger.info("Cleared model_changed_at flag - subsequent prompts will use normal flow")
                 
                 if result.success:
                     data = result.data or {}
@@ -2091,7 +2110,17 @@ The AI changes have been applied via Ctrl+Enter.
             success, message = self.user_prefs.set_user_model(user_id, alias)
             
             if success:
-                await update.message.reply_text(f"✅ {message}", parse_mode="Markdown")
+                # Get the model to check if it's paid
+                model = self.user_prefs.get_user_model(user_id)
+                response = f"✅ {message}"
+                
+                # Add warning for paid models
+                if model.tier == ModelTier.PAID:
+                    response += f"\n\n⚠️ **Note:** {model.display_name} is a paid model."
+                    response += "\n💡 Make sure your Cursor subscription includes access to this model."
+                    response += "\n📝 If you see errors, try a free model: `/model haiku` or `/model gemini`"
+                
+                await update.message.reply_text(response, parse_mode="Markdown")
             else:
                 await update.message.reply_text(f"❌ {message}", parse_mode="Markdown")
             return
@@ -2099,33 +2128,40 @@ The AI changes have been applied via Ctrl+Enter.
         # Show interactive model selection menu
         current_model = self.user_prefs.get_user_model(user_id)
         
-        # Build inline keyboard with model buttons
+        # Build inline keyboard with model buttons (2-3 buttons per row)
         keyboard = []
         
-        # First row: Paid models
-        paid_row = []
+        # Collect paid and free models separately
+        paid_models = []
+        free_models = []
         for alias, model in AVAILABLE_MODELS.items():
+            label = f"{model.emoji} {model.alias.title()}"
+            if model.alias == current_model.alias:
+                label = f"✓ {label}"
+            button = InlineKeyboardButton(label, callback_data=f"model_{alias}")
             if model.tier == ModelTier.PAID:
-                label = f"{model.emoji} {model.alias.title()}"
-                if model.alias == current_model.alias:
-                    label = f"✓ {label}"
-                paid_row.append(InlineKeyboardButton(label, callback_data=f"model_{alias}"))
-        keyboard.append(paid_row)
+                paid_models.append(button)
+            else:
+                free_models.append(button)
         
-        # Second row: Free models
-        free_row = []
-        for alias, model in AVAILABLE_MODELS.items():
-            if model.tier == ModelTier.FREE:
-                label = f"{model.emoji} {model.alias.title()}"
-                if model.alias == current_model.alias:
-                    label = f"✓ {label}"
-                free_row.append(InlineKeyboardButton(label, callback_data=f"model_{alias}"))
-        keyboard.append(free_row)
+        # Add paid models in rows of 2-3 buttons
+        for i in range(0, len(paid_models), 3):
+            keyboard.append(paid_models[i:i+3])
+        
+        # Add free models in rows of 2-3 buttons
+        for i in range(0, len(free_models), 3):
+            keyboard.append(free_models[i:i+3])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         message = format_model_selection_message(current_model)
-        message += "\n💎 = Paid  |  ✨ = Free"
+        message += "\n\n💎 = Paid (requires Cursor subscription)"
+        message += "\n✨ = Free (available to all)"
+        message += "\n\n⚠️ **Important:**"
+        message += "\n• Paid models require a Cursor subscription with access to that model."
+        message += "\n• **Your selected model must be enabled in Cursor Settings > Models**"
+        message += "\n• If a model isn't working, check Cursor Settings and toggle it ON"
+        message += "\n💡 If you see errors, try switching to a free model."
         
         await update.message.reply_text(
             message,
@@ -2165,6 +2201,17 @@ The AI changes have been applied via Ctrl+Enter.
 
 Your next /ai command will use this model.
 """
+            
+            # Add important notes
+            result_message += "\n\n⚠️ **Important:**"
+            result_message += f"\n• Make sure '{new_model.display_name}' is **enabled** in Cursor Settings > Models"
+            result_message += "\n• If the model isn't working, check Cursor Settings and toggle it ON"
+            
+            # Add warning for paid models
+            if new_model.tier == ModelTier.PAID:
+                result_message += "\n• This is a paid model - ensure your Cursor subscription includes access"
+                result_message += "\n💡 If you see errors, try: `/model haiku` or `/model gemini`"
+            
             await query.edit_message_text(result_message, parse_mode="Markdown")
         else:
             await query.edit_message_text(f"❌ {message}", parse_mode="Markdown")
@@ -2181,7 +2228,7 @@ Your next /ai command will use this model.
         lines = ["📋 **Available AI Models**\n"]
         
         # Paid models
-        lines.append("💎 **Paid Models:**")
+        lines.append("💎 **Paid Models:** *(Requires Cursor subscription with access)*")
         for alias, model in AVAILABLE_MODELS.items():
             if model.tier == ModelTier.PAID:
                 current_marker = " ✅" if model.alias == current_model.alias else ""
@@ -2192,9 +2239,12 @@ Your next /ai command will use this model.
                 lines.append(f"      _{model.description}_")
         
         lines.append("")
+        lines.append("⚠️ **Note:** Paid models require a Cursor subscription that includes access to that specific model.")
+        lines.append("💡 If you select a paid model you don't have access to, Cursor will show an error.")
+        lines.append("")
         
         # Free models
-        lines.append("✨ **Free Models:**")
+        lines.append("✨ **Free Models:** *(Available to all users)*")
         for alias, model in AVAILABLE_MODELS.items():
             if model.tier == ModelTier.FREE:
                 current_marker = " ✅" if model.alias == current_model.alias else ""
@@ -2207,6 +2257,8 @@ Your next /ai command will use this model.
         lines.append("")
         lines.append("💡 **Quick Switch:** `/model opus` or `/model haiku`")
         lines.append("🔘 **Menu:** `/model` (interactive buttons)")
+        lines.append("")
+        lines.append("📚 **Need Help?** Check your Cursor subscription settings to see which models you have access to.")
         
         await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
     
@@ -2380,8 +2432,10 @@ Your next /ai command will use this model.
                     ocr_summary = ocr_result.data.get("summary", "")
                     screenshot_path = ocr_result.data.get("screenshot_path")
                 
-                # Build the response message
-                message_parts = [git_summary]
+                # Build the combined message with git summary and OCR summary
+                combined_message = git_summary
+                if ocr_summary and len(ocr_summary.strip()) > 10:
+                    combined_message += f"\n\n📝 **AI Summary:**\n\n{ocr_summary}"
                 
                 # Add buttons (Cursor controls only, no git)
                 keyboard = []
@@ -2396,39 +2450,66 @@ Your next /ai command will use this model.
                 
                 reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
                 
-                # Send screenshot with git summary first
+                # Send screenshot with combined message (git summary + OCR summary)
                 if screenshot_path and Path(screenshot_path).exists():
                     try:
                         with open(screenshot_path, 'rb') as photo:
+                            # Send photo with caption (truncated to 1024 chars for Telegram limit)
+                            caption = self._truncate_message(combined_message)[:1024]
                             await query.message.reply_photo(
                                 photo=photo,
-                                caption=self._truncate_message(git_summary)[:1024],
+                                caption=caption,
                                 parse_mode="Markdown",
                                 reply_markup=reply_markup
                             )
+                        
+                        # If combined message is longer than caption limit, send full text as separate message
+                        if len(combined_message) > 1024:
+                            # Check if full message is too long for text message (Telegram limit ~4096 chars)
+                            if len(combined_message) > 3800:
+                                # Send as a text document for full scrollability
+                                await self._send_ocr_as_document(
+                                    query.message,
+                                    combined_message,
+                                    "check_summary.txt",
+                                    "📊 **Full Check Summary** (git diff + AI summary)"
+                                )
+                            else:
+                                # Send as formatted text message
+                                await query.message.reply_text(
+                                    self._truncate_message(combined_message),
+                                    parse_mode="Markdown"
+                                )
                     except Exception as e:
                         logger.warning(f"Failed to send screenshot: {e}")
-                        await query.message.reply_text(git_summary, parse_mode="Markdown", reply_markup=reply_markup)
+                        # Fallback: send text message only
+                        if len(combined_message) > 3800:
+                            await self._send_ocr_as_document(
+                                query.message,
+                                combined_message,
+                                "check_summary.txt",
+                                "📊 **Check Summary**"
+                            )
+                        else:
+                            await query.message.reply_text(
+                                self._truncate_message(combined_message),
+                                parse_mode="Markdown",
+                                reply_markup=reply_markup
+                            )
                 else:
-                    await query.message.reply_text(git_summary, parse_mode="Markdown", reply_markup=reply_markup)
-                
-                # If we have OCR text, send it separately (allows scrolling through long output)
-                if ocr_summary and len(ocr_summary.strip()) > 10:
-                    # Check if text is too long for a message (Telegram limit ~4096 chars)
-                    if len(ocr_summary) > 3800:
-                        # Send as a text document for full scrollability
+                    # No screenshot - send text message only
+                    if len(combined_message) > 3800:
                         await self._send_ocr_as_document(
                             query.message,
-                            ocr_summary,
-                            "cursor_output.txt",
-                            "📝 **AI Output Text** (full, scrollable)"
+                            combined_message,
+                            "check_summary.txt",
+                            "📊 **Check Summary**"
                         )
                     else:
-                        # Send as formatted message
-                        ocr_message = f"📝 **Cursor AI Output:**\n\n{ocr_summary}"
                         await query.message.reply_text(
-                            self._truncate_message(ocr_message),
-                            parse_mode="Markdown"
+                            self._truncate_message(combined_message),
+                            parse_mode="Markdown",
+                            reply_markup=reply_markup
                         )
             else:
                 message = f"❌ Check failed: {result.error or 'Unknown error'}"
@@ -2999,6 +3080,22 @@ The AI changes have been applied via {shortcut}.
         
         # Set bot commands
         await self._set_commands()
+        
+        # Load PIN/password from storage on startup (for persistence across sessions)
+        try:
+            from .lock_pin_storage import get_lock_pin_storage
+            from .custom_lock import set_lock_pin, set_lock_password
+            storage = get_lock_pin_storage()
+            loaded_pin = storage.retrieve_pin()
+            loaded_password = storage.retrieve_password()
+            if loaded_pin:
+                set_lock_pin(loaded_pin)
+                logger.info("PIN loaded from storage on startup")
+            elif loaded_password:
+                set_lock_password(loaded_password)
+                logger.info("Password loaded from storage on startup")
+        except Exception as e:
+            logger.debug(f"Could not load PIN/password on startup (may not be set): {e}")
         
         # Start sleep prevention if enabled
         prevent_sleep = os.getenv("PREVENT_SLEEP", "true").lower() == "true"

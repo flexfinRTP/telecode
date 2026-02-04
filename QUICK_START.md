@@ -1,4 +1,4 @@
-# ⚡ TeleCode Quick Start Guide
+# ⚡ TeleCode v0.2.0 Quick Start Guide
 
 <div align="center">
   <img src="assets/telecode.png" alt="TeleCode Logo" width="150">
@@ -146,14 +146,27 @@ Choose which AI model powers your prompts:
 
 ## 📊 After AI Execution - Action Buttons
 
-After every AI prompt, you'll see a **completion message** with action buttons:
+After every AI prompt, you'll see **progress updates** and a **completion message** with action buttons:
 
 ```
-Bot: ✅ Cursor AI Completed! (3 files, 45s)
+Bot: 📤 Sending to Cursor...
+     🤖 Cursor AI is processing...
+
+     [8 seconds later]
+     📸 AI Started! (Initial screenshot)
+     
+     [1 minute later]
+     📸 Progress Update (2 files changed, 1m elapsed)
+     [➡️ Continue] [🛑 Stop]
+     
+     [When complete]
+     ✅ Cursor AI Completed! (3 files, 45s)
 
      🤖 Agent mode - Files auto-saved
      
      📁 src/login.py, src/auth.py, src/utils.py
+     📸 [Screenshot attached]
+     📄 [Extracted text summary attached]
      
      📝 Prompt: Add error handling
      
@@ -164,13 +177,18 @@ Bot: ✅ Cursor AI Completed! (3 files, 45s)
 
 | Button | Action |
 |--------|--------|
-| 📊 Check | See files modified |
+| 📊 Check | See files modified + OCR text extraction |
 | 📖 Diff | View changes |
 | ✅ Accept | Accept changes in Cursor (Ctrl+Enter) |
 | ❌ Reject | Reject changes in Cursor (Escape) |
 | ➡️ Continue | Continue AI with follow-up |
 | ⚙️ Mode | Switch Agent/Chat mode |
 | 🧹 Cleanup | Close old agent tabs |
+
+**Progress Features:**
+- Real-time screenshots while AI works
+- Text extraction from screenshots (click "📊 Check" to see)
+- Control buttons on progress screenshots (Continue, Stop)
 
 **Note:** Run button only appears when AI is waiting for approval (not on completion).
 
@@ -182,10 +200,7 @@ Just **hold the microphone** in Telegram and speak:
 
 > "Add a loading spinner to the dashboard component"
 
-TeleCode will:
-1. Transcribe your voice (free Google Speech API)
-2. Send it to Cursor AI (uses your existing Cursor plan)
-3. Show you the changes made
+TeleCode will transcribe your voice and send it to Cursor AI (uses your existing Cursor plan).
 
 **No API costs** — uses your Cursor subscription!
 

@@ -1185,7 +1185,345 @@ class CursorAgentBridge:
             error="Cursor did not open in time. Please try again or open manually."
         )
     
-    def _send_to_composer(self, prompt: str, mode: str = "agent") -> bool:
+    def _change_cursor_model(self, model_id: str) -> bool:
+        """
+        Change the AI model in Cursor GUI after Composer opens.
+        
+        This method ACTUALLY CLICKS the model selector button instead of just typing text.
+        Uses multiple strategies with fallbacks:
+        1. Screenshot + OCR to locate model selector button and click it
+        2. Keyboard shortcut to open model menu (Ctrl+Shift+M)
+        3. Tab navigation to reach model selector
+        4. Coordinate-based clicking in common locations
+        
+        Args:
+            model_id: The model ID to select (e.g., "claude-opus-4.5", "gpt-5.2")
+            
+        Returns:
+            True if model change was successfully executed
+        """
+        if not AUTOMATION_AVAILABLE:
+            logger.warning("Keyboard automation not available, skipping model change")
+            return False
+        
+        try:
+            logger.info(f"Attempting to change Cursor model to: {model_id}")
+            
+            # Get model info for display name matching
+            from .model_config import get_model_by_id, AVAILABLE_MODELS
+            model = get_model_by_id(model_id)
+            if not model:
+                # Try to find by alias
+                for m in AVAILABLE_MODELS.values():
+                    if m.id == model_id:
+                        model = m
+                        break
+            
+            if not model:
+                logger.warning(f"Model {model_id} not found in registry, skipping model change")
+                return False
+            
+            logger.info(f"Changing to model: {model.display_name} ({model_id})")
+            
+            # Wait for Composer to fully load
+            time.sleep(0.5)
+            
+            # Strategy 1: Use Ctrl+/ to open model selector, then OCR to find and click the model
+            # This is the most reliable method - uses the correct shortcut then finds the model button
+            logger.info("Strategy 1: Using Ctrl+/ to open model selector, then OCR to select model...")
+            try:
+                # Step 1: Open model selector with Ctrl+/ (Cursor's actual shortcut)
+                pyautogui.hotkey(MODIFIER_KEY, '/')
+                time.sleep(0.8)  # Give dropdown time to open
+                
+                # Step 2: Use OCR to find and click the model in the dropdown
+                if OCR_AVAILABLE and self._select_model_from_dropdown(model):
+                    return True
+                else:
+                    logger.warning("OCR not available or failed, falling back to keyboard methods...")
+                    
+            except Exception as e:
+                logger.debug(f"Strategy 1 (Ctrl+/ + OCR) failed: {e}")
+                logger.info("Falling back to other methods...")
+            
+            # Strategy 2: Use Ctrl+/ to open model selector (Cursor's actual shortcut)
+            logger.info("Strategy 2: Using Ctrl+/ to open model selector...")
+            time.sleep(0.2)
+            
+            try:
+                # Use Ctrl+/ (Cmd+/ on macOS) - Cursor's actual model selector shortcut
+                pyautogui.hotkey(MODIFIER_KEY, '/')
+                time.sleep(0.8)  # Give menu time to open
+                
+                # Now select the model from the dropdown using OCR to find and click it
+                if self._select_model_from_dropdown(model):
+                    return True
+                    
+            except Exception as e:
+                logger.debug(f"Keyboard shortcut method failed: {e}")
+            
+            # Strategy 3: Use Tab navigation to reach model selector
+            logger.info("Strategy 3: Trying Tab navigation to find model selector...")
+            time.sleep(0.2)
+            
+            try:
+                # Press Escape first to close any open menus
+                pyautogui.press('escape')
+                time.sleep(0.2)
+                
+                # Press Tab multiple times to navigate to model selector
+                # Usually it's one of the first elements in Composer
+                for i in range(5):
+                    pyautogui.press('tab')
+                    time.sleep(0.15)
+                
+                # Try to open dropdown with Space
+                pyautogui.press('space')
+                time.sleep(0.5)
+                
+                # Select model from dropdown
+                if self._select_model_from_dropdown(model):
+                    return True
+                    
+            except Exception as e:
+                logger.debug(f"Tab navigation method failed: {e}")
+            
+            # Strategy 4: Try clicking in common locations where model selector appears
+            # This is a last resort - model selector is often in top-left area of Composer
+            logger.info("Strategy 4: Trying coordinate-based clicking in common locations...")
+            try:
+                screen_width, screen_height = pyautogui.size()
+                
+                # Common locations for model selector (top area, left side)
+                common_locations = [
+                    (int(screen_width * 0.15), int(screen_height * 0.1)),  # Top-left area
+                    (int(screen_width * 0.2), int(screen_height * 0.12)),  # Slightly right
+                    (int(screen_width * 0.1), int(screen_height * 0.15)),  # More left
+                ]
+                
+                for x, y in common_locations:
+                    logger.info(f"Trying click at ({x}, {y})...")
+                    pyautogui.click(x, y)
+                    time.sleep(0.5)
+                    
+                    # Try to select model
+                    if self._select_model_from_dropdown(model):
+                        return True
+                    
+                    # Press Escape to close if wrong element clicked
+                    pyautogui.press('escape')
+                    time.sleep(0.3)
+                    
+            except Exception as e:
+                logger.debug(f"Coordinate-based clicking failed: {e}")
+            
+            logger.warning(f"All model selection strategies failed for {model.display_name}")
+            logger.info("Continuing with prompt send - model may use Cursor's default or last selection")
+            return False
+            
+        except Exception as e:
+            logger.warning(f"Failed to change model in Cursor: {e}")
+            logger.info("Continuing with prompt send - model may use Cursor's default or last selection")
+            return False
+    
+    def _select_model_from_dropdown(self, model: 'AIModel') -> bool:
+        """
+        Select a model from an open dropdown menu using OCR to find and click it.
+        
+        Args:
+            model: The AIModel object to select
+            
+        Returns:
+            True if selection was successful
+        """
+        try:
+            # Wait for dropdown to be fully open
+            time.sleep(0.4)
+            
+            # Method 1: Use OCR to locate and click the model button in the dropdown
+            if OCR_AVAILABLE:
+                logger.info("Using OCR to locate and click model in dropdown...")
+                try:
+                    # Take a screenshot of the dropdown area
+                    full_screenshot = pyautogui.screenshot()
+                    screen_width, screen_height = pyautogui.size()
+                    
+                    # Model dropdown typically appears in center/upper area
+                    # Crop to a larger area to capture the dropdown
+                    dropdown_crop = full_screenshot.crop((
+                        0, 
+                        0, 
+                        screen_width, 
+                        int(screen_height * 0.6)  # Top 60% should cover dropdown
+                    ))
+                    
+                    # Run OCR on the dropdown area
+                    custom_config = r'--oem 3 --psm 6 -l eng'
+                    ocr_data = pytesseract.image_to_data(dropdown_crop, config=custom_config, output_type=pytesseract.Output.DICT)
+                    
+                    # Look for the model name in the dropdown
+                    # Match against various forms of the model name
+                    model_search_patterns = [
+                        model.display_name,  # Full display name
+                        model.alias.title(),  # Alias capitalized
+                        model.id.replace("-", " ").title(),  # ID formatted
+                    ]
+                    
+                    # Add specific patterns for each model type
+                    model_display_lower = model.display_name.lower()
+                    if "opus" in model_display_lower:
+                        model_search_patterns.extend(["Opus", "opus 4.5", "Opus 4.5"])
+                    elif "sonnet" in model_display_lower:
+                        model_search_patterns.extend(["Sonnet", "sonnet 4.5", "Sonnet 4.5"])
+                    elif "haiku" in model_display_lower:
+                        model_search_patterns.extend(["Haiku", "haiku 4.5", "Haiku 4.5"])
+                    elif "gemini" in model_display_lower:
+                        if "pro" in model_display_lower:
+                            model_search_patterns.extend(["Gemini Pro", "Gemini 3 Pro", "gemini pro"])
+                        elif "flash" in model_display_lower:
+                            model_search_patterns.extend(["Gemini 3 Flash", "Gemini Flash", "gemini flash"])
+                    elif "gpt" in model_display_lower:
+                        if "codex" in model_display_lower:
+                            model_search_patterns.extend(["GPT-5.2 Codex", "Codex", "codex"])
+                        else:
+                            model_search_patterns.extend(["GPT-5.2", "GPT", "gpt"])
+                    elif "llama" in model_display_lower:
+                        model_search_patterns.extend(["Llama", "Llama 3.1", "llama"])
+                    elif "grok" in model_display_lower:
+                        model_search_patterns.extend(["Grok", "grok"])
+                    
+                    best_match = None
+                    best_confidence = 0
+                    
+                    for i, word in enumerate(ocr_data.get('text', [])):
+                        if word and word.strip():
+                            word_text = word.strip()
+                            word_lower = word_text.lower()
+                            confidence = ocr_data.get('conf', [0])[i] if 'conf' in ocr_data else 0
+                            
+                            # Check if this word matches any model pattern
+                            for pattern in model_search_patterns:
+                                pattern_lower = pattern.lower()
+                                # Check for exact match or substring match
+                                if (pattern_lower == word_lower or 
+                                    pattern_lower in word_lower or 
+                                    word_lower in pattern_lower):
+                                    
+                                    # Found potential model - get coordinates
+                                    x = ocr_data['left'][i]
+                                    y = ocr_data['top'][i]
+                                    w = ocr_data['width'][i]
+                                    h = ocr_data['height'][i]
+                                    
+                                    # Skip if coordinates are invalid
+                                    if x < 0 or y < 0 or w <= 0 or h <= 0:
+                                        continue
+                                    
+                                    # Prefer matches with higher confidence
+                                    if confidence > best_confidence or (best_match is None and confidence > 0):
+                                        best_match = {
+                                            'x': x,
+                                            'y': y,
+                                            'w': w,
+                                            'h': h,
+                                            'word': word_text,
+                                            'confidence': confidence
+                                        }
+                                        best_confidence = confidence
+                    
+                    if best_match:
+                        # Calculate center of the text box
+                        center_x = best_match['x'] + (best_match['w'] // 2)
+                        center_y = best_match['y'] + (best_match['h'] // 2)
+                        
+                        # Coordinates are relative to cropped image, map to screen
+                        # The crop is from (0, 0) to (screen_width, screen_height * 0.6)
+                        # So coordinates map directly (crop starts at screen origin)
+                        click_x = max(10, min(center_x, screen_width - 10))
+                        click_y = max(10, min(center_y, int(screen_height * 0.6) - 10))
+                        
+                        logger.info(f"Found model '{best_match['word']}' at ({click_x}, {click_y}), clicking...")
+                        
+                        # Click on the model button
+                        pyautogui.click(click_x, click_y)
+                        time.sleep(0.4)
+                        
+                        logger.info(f"Successfully selected model: {model.display_name}")
+                        return True
+                    else:
+                        logger.warning(f"Could not find model '{model.display_name}' in dropdown via OCR")
+                        
+                except Exception as e:
+                    logger.debug(f"OCR-based model selection failed: {e}")
+                    logger.info("Falling back to keyboard-based selection...")
+            
+            # Method 2: Type model name to filter and select (fallback)
+            model_search_terms = {
+                "claude": ["claude", "opus", "sonnet", "haiku"],
+                "gemini": ["gemini", "flash", "pro"],
+                "gpt": ["gpt", "5.2", "codex"],
+                "llama": ["llama", "3.1"],
+                "grok": ["grok"]
+            }
+            
+            model_display_lower = model.display_name.lower()
+            
+            # Determine search term based on model type
+            search_term = None
+            for key, terms in model_search_terms.items():
+                if key in model_display_lower:
+                    # Use the most specific term
+                    if "opus" in model_display_lower:
+                        search_term = "opus"
+                    elif "sonnet" in model_display_lower:
+                        search_term = "sonnet"
+                    elif "haiku" in model_display_lower:
+                        search_term = "haiku"
+                    elif "pro" in model_display_lower and "gemini" in model_display_lower:
+                        search_term = "gemini pro"
+                    elif "flash" in model_display_lower and "gemini" in model_display_lower:
+                        search_term = "gemini flash"
+                    elif "codex" in model_display_lower:
+                        search_term = "codex"
+                    else:
+                        search_term = key
+                    break
+            
+            if search_term:
+                logger.info(f"Typing '{search_term}' to filter model dropdown...")
+                # Clear any existing text first (focus search field)
+                pyautogui.hotkey(MODIFIER_KEY, 'a')
+                time.sleep(0.1)
+                # Type the search term
+                pyautogui.write(search_term, interval=0.08)
+                time.sleep(0.5)  # Wait for filtering
+                
+                # Press Enter to select the filtered result
+                pyautogui.press('enter')
+                time.sleep(0.3)
+                logger.info(f"Selected model via keyboard: {model.display_name}")
+                return True
+            else:
+                # Method 3: Use arrow keys to navigate (last resort)
+                logger.info("Using arrow keys to navigate model dropdown...")
+                # Press down arrow a few times to navigate
+                for _ in range(15):  # Try up to 15 models
+                    pyautogui.press('down')
+                    time.sleep(0.1)
+                    # After a few presses, try selecting
+                    if _ >= 5:  # After 5 presses, try selecting
+                        pyautogui.press('enter')
+                        time.sleep(0.3)
+                        logger.info(f"Selected model via arrow keys: {model.display_name}")
+                        return True
+                
+                return False
+                
+        except Exception as e:
+            logger.debug(f"Model dropdown selection failed: {e}")
+            return False
+    
+    def _send_to_composer(self, prompt: str, mode: str = "agent", model_id: Optional[str] = None) -> bool:
         """
         Send prompt to Cursor via keyboard automation.
         
@@ -1194,6 +1532,7 @@ class CursorAgentBridge:
             mode: One of "agent" or "chat"
                 - agent: Ctrl+Shift+I - Opens new agent, auto-saves files (SAFEST)
                 - chat: Ctrl+L - Chat panel, changes need Keep All to apply
+            model_id: Optional model ID to set before sending prompt
             
         Returns:
             True if prompt was sent successfully
@@ -1240,6 +1579,21 @@ class CursorAgentBridge:
                 logger.info(f"Opening Chat with {MODIFIER_KEY.title()}+L (manual accept mode)...")
                 pyautogui.hotkey(MODIFIER_KEY, 'l')
             time.sleep(self.COMPOSER_OPEN_WAIT)
+            
+            # Step 3.5: Change model if specified (after Composer opens)
+            # This is best-effort - if it fails, we continue with prompt send
+            if model_id:
+                logger.info(f"Changing model to {model_id}...")
+                try:
+                    model_changed = self._change_cursor_model(model_id)
+                    if model_changed:
+                        logger.info("Model change attempted successfully")
+                    else:
+                        logger.warning("Model change may have failed, continuing with prompt send")
+                    time.sleep(0.5)  # Give model selector time to process
+                except Exception as e:
+                    logger.warning(f"Model change error (non-blocking): {e}")
+                    logger.info("Continuing with prompt send - model may use Cursor's default")
             
             # Step 4: Clear any existing text and paste prompt
             logger.info("Pasting prompt...")
@@ -1306,8 +1660,22 @@ class CursorAgentBridge:
         # Determine which mode to use
         effective_mode = mode or self.session.prompt_mode or "agent"
         
+        # Get model ID from model parameter (could be alias or full ID)
+        model_id = None
+        if model:
+            from .model_config import validate_model, get_model_by_id
+            # Try to get model by alias or ID
+            model_obj = validate_model(model)
+            if model_obj:
+                model_id = model_obj.id
+            else:
+                # Try as full ID
+                model_obj = get_model_by_id(model)
+                if model_obj:
+                    model_id = model_obj.id
+        
         # Save prompt to file for logging
-        self._save_prompt_file(prompt, model)
+        self._save_prompt_file(prompt, model_id or model)
         
         # Snapshot current files BEFORE sending prompt (to detect changes later)
         files_before = self._get_current_files_snapshot()
@@ -1321,9 +1689,9 @@ class CursorAgentBridge:
                 error="Could not launch Cursor IDE"
             )
         
-        # Step 2: Send prompt using the selected mode
-        logger.info(f"Sending prompt in {effective_mode} mode...")
-        if not self._send_to_composer(prompt, mode=effective_mode):
+        # Step 2: Send prompt using the selected mode and model
+        logger.info(f"Sending prompt in {effective_mode} mode with model {model_id or 'default'}...")
+        if not self._send_to_composer(prompt, mode=effective_mode, model_id=model_id):
             # Update session with error
             self.session.state = AgentState.ERROR
             self.session.last_error = "Failed to send prompt to Cursor"
