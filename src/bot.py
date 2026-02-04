@@ -450,16 +450,31 @@ class TeleCodeBot:
     @require_auth
     async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Welcome message and quick status."""
-        self.sentinel.log_command(update.effective_user.id, "/start")
-        
-        # Virtual Display mode - monitor off, session active (not locked)
-        lock_status = "🖥️ Display Off"
-        
-        # Get user's selected model
-        user_id = update.effective_user.id
-        current_model = self.user_prefs.get_user_model(user_id)
-        
-        welcome = f"""
+        try:
+            user_id = update.effective_user.id if update.effective_user else None
+            if not user_id:
+                logger.warning("Received /start without user ID")
+                await update.message.reply_text("❌ Error: Could not identify user.")
+                return
+            
+            # Log command (this should always work)
+            try:
+                self.sentinel.log_command(user_id, "/start")
+            except Exception as e:
+                logger.warning(f"Failed to log /start command: {e}")
+            
+            # Virtual Display mode - monitor off, session active (not locked)
+            lock_status = "🖥️ Display Off"
+            
+            # Get user's selected model (with fallback if it fails)
+            try:
+                current_model = self.user_prefs.get_user_model(user_id)
+                model_display = f"{current_model.emoji} {current_model.display_name}"
+            except Exception as e:
+                logger.warning(f"Failed to get user model for /start: {e}")
+                model_display = "🤖 Default"
+            
+            welcome = f"""
 🚀 **Welcome to TeleCode v0.1**
 
 Your secure Telegram-to-Terminal bridge is active!
@@ -467,12 +482,22 @@ Your secure Telegram-to-Terminal bridge is active!
 📂 **Sandbox:** `{self.sentinel.dev_root.name}`
 🖥️ **Screen:** {lock_status}
 🎤 **Voice:** {"✅ Enabled" if self.voice.is_available else "❌ Disabled"}
-🤖 **Model:** {current_model.emoji} {current_model.display_name}
+🤖 **Model:** {model_display}
 
 Type /help to see available commands.
 Use /model to change AI model.
 """
-        await update.message.reply_text(welcome, parse_mode="Markdown")
+            await update.message.reply_text(welcome, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Error in /start command: {e}", exc_info=True)
+            try:
+                await update.message.reply_text(
+                    "🚀 **Welcome to TeleCode!**\n\n"
+                    "Type /help to see available commands.",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                logger.error("Failed to send error fallback message")
     
     @require_auth
     async def _cmd_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

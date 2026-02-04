@@ -82,11 +82,11 @@ Click **"Save & Start Bot"**.
 
 ## Step 4: Start Using! (0 seconds)
 
-Open Telegram, find your bot, and try:
+Open Telegram, find your bot, and **send `/start` or `/help`**:
 
 ```
-/start          → Welcome message
-/help           → List commands
+/start          → Welcome message (send this first!)
+/help           → List all commands
 /status         → Git status
 Hello world     → AI prompt!
 ```

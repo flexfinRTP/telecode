@@ -124,9 +124,24 @@
       "sameAs": [
         "https://github.com/flexfinRTP/telecode"
       ],
-      "description": "Open source voice-to-code AI agent for controlling Cursor from Telegram"
+      "description": "Vice-to-code AI agent for controlling Cursor from Telegram"
     }
     </script>
+    <!-- Google Analytics 4 (GA4) -->
+    <!-- GA Measurement ID is injected from GitHub Secrets during deployment -->
+    <!-- For local development, replace G-XXXXXXXXXX with your Measurement ID -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-XXXXXXXXXX', {
+            'page_title': 'TeleCode - Voice-to-Code AI Agent',
+            'page_location': window.location.href,
+            'send_page_view': true
+        });
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -1293,7 +1308,7 @@
             <div class="download-section">
                 <div class="download-grid" id="installer-grid">
                     <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
-                        <a href="#" class="download-btn windows" id="windows-installer" data-type="installer">
+                        <a href="#" class="download-btn windows" id="windows-installer" data-type="installer" data-platform="windows" data-version="installer" onclick="trackDownload(event, 'windows', 'installer')">
                             <div class="download-btn-wrapper">
                                 <img src="https://img.icons8.com/color/96/000000/windows-10.png" alt="Windows"
                                     class="download-btn-logo"
@@ -1302,11 +1317,11 @@
                             </div>
                             <span class="download-btn-version" id="windows-installer-version">Loading...</span>
                         </a>
-                        <a href="#" class="download-portable-link" id="windows-portable-link">💼 Portable version (no
+                        <a href="#" class="download-portable-link" id="windows-portable-link" data-platform="windows" data-version="portable" onclick="trackDownload(event, 'windows', 'portable')">💼 Portable version (no
                             install)</a>
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
-                        <a href="#" class="download-btn macos" id="macos-installer" data-type="installer">
+                        <a href="#" class="download-btn macos" id="macos-installer" data-type="installer" data-platform="macos" data-version="installer" onclick="trackDownload(event, 'macos', 'installer')">
                             <div class="download-btn-wrapper">
                                 <img src="https://img.icons8.com/ios-filled/100/ffffff/mac-logo.png" alt="macOS"
                                     class="download-btn-logo"
@@ -1315,11 +1330,11 @@
                             </div>
                             <span class="download-btn-version" id="macos-installer-version">Loading...</span>
                         </a>
-                        <span class="download-portable-link" style="opacity: 0.5; cursor: default;">💼 Portable (coming
+                        <span class="download-portable-link" style="opacity: 0.5; cursor: default;" data-platform="macos" data-version="portable" onclick="trackDownload(event, 'macos', 'portable', true)">💼 Portable (coming
                             soon)</span>
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
-                        <a href="#" class="download-btn linux" id="linux-installer" data-type="installer">
+                        <a href="#" class="download-btn linux" id="linux-installer" data-type="installer" data-platform="linux" data-version="installer" onclick="trackDownload(event, 'linux', 'installer')">
                             <div class="download-btn-wrapper">
                                 <img src="https://img.icons8.com/color/96/000000/linux.png" alt="Linux"
                                     class="download-btn-logo"
@@ -1328,7 +1343,7 @@
                             </div>
                             <span class="download-btn-version" id="linux-installer-version">Loading...</span>
                         </a>
-                        <span class="download-portable-link" style="opacity: 0.5; cursor: default;">💼 Portable (coming
+                        <span class="download-portable-link" style="opacity: 0.5; cursor: default;" data-platform="linux" data-version="portable" onclick="trackDownload(event, 'linux', 'portable', true)">💼 Portable (coming
                             soon)</span>
                     </div>
                 </div>
@@ -1872,6 +1887,82 @@
 
         // Load releases on page load
         loadReleases();
+
+        // Google Analytics 4 - Download Tracking Function
+        // Tracks all download button clicks with detailed event parameters
+        function trackDownload(event, platform, version, isComingSoon = false) {
+            // Prevent default if coming soon
+            if (isComingSoon) {
+                event.preventDefault();
+                return false;
+            }
+
+            // Get the actual download URL from the element
+            const element = event.currentTarget;
+            const downloadUrl = element.href;
+            
+            // Only track if there's a valid download URL
+            if (!downloadUrl || downloadUrl === '#' || downloadUrl.includes('#')) {
+                // If URL is not ready yet, wait a moment and try again
+                setTimeout(() => {
+                    const retryUrl = element.href;
+                    if (retryUrl && retryUrl !== '#' && !retryUrl.includes('#')) {
+                        sendDownloadEvent(platform, version, retryUrl);
+                    }
+                }, 500);
+                return true; // Allow default action to proceed
+            }
+
+            // Send download event to Google Analytics
+            sendDownloadEvent(platform, version, downloadUrl);
+            
+            // Allow the download to proceed
+            return true;
+        }
+
+        function sendDownloadEvent(platform, version, downloadUrl) {
+            // Check if gtag is available
+            if (typeof gtag === 'undefined') {
+                console.warn('Google Analytics not loaded');
+                return;
+            }
+
+            // Extract filename from URL
+            const filename = downloadUrl.split('/').pop().split('?')[0];
+            
+            // Send event to Google Analytics 4
+            gtag('event', 'file_download', {
+                'file_name': filename,
+                'file_extension': filename.split('.').pop(),
+                'platform': platform,
+                'download_type': version, // 'installer' or 'portable'
+                'link_url': downloadUrl,
+                'link_text': `${platform} ${version}`,
+                'event_category': 'Downloads',
+                'event_label': `${platform}_${version}`,
+                'value': 1,
+                'non_interaction': false
+            });
+
+            // Also send a custom download event for better tracking
+            gtag('event', 'download', {
+                'method': 'direct',
+                'platform': platform,
+                'version_type': version,
+                'file_name': filename
+            });
+        }
+
+        // Track page view on load (already handled by gtag config, but adding explicit tracking)
+        window.addEventListener('load', function() {
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'page_view', {
+                    'page_title': document.title,
+                    'page_location': window.location.href,
+                    'page_path': window.location.pathname
+                });
+            }
+        });
     </script>
 </body>
 

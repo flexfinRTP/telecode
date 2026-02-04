@@ -240,6 +240,13 @@ TeleCode stores configuration in a `.env` file. You can configure via:
 
 ## 📱 Bot Commands
 
+### Getting Started
+| Command | Description |
+|---------|-------------|
+| `/start` | Welcome message and bot status |
+| `/help` | List all available commands |
+| `/info` | System information |
+
 ### Git Operations
 | Command | Description |
 |---------|-------------|
@@ -303,9 +310,9 @@ After every AI prompt, inline action buttons appear:
 ### System
 | Command | Description |
 |---------|-------------|
-| `/start` | Welcome message |
-| `/help` | List commands |
-| `/info` | System status |
+| `/start` | Welcome message and bot status |
+| `/help` | List all available commands |
+| `/info` | System status and information |
 
 ---
 

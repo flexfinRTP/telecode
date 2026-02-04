@@ -1,0 +1,63 @@
+# ============================================
+# GitHub Pages Deployment with GA4 Secret Injection
+# Replaces GA Measurement ID placeholder with secret value during deployment
+# ============================================
+# 
+# IMPORTANT: After adding this workflow, you need to:
+# 1. Go to Settings → Pages → Build and deployment
+# 2. Change "Source" from "Deploy from a branch" to "GitHub Actions"
+# 3. This workflow will then handle all deployments
+#
+# If you prefer to keep branch-based deployment, see alternative in docs
+
+name: Deploy GitHub Pages with GA4
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'index.html'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Inject Google Analytics ID
+        run: |
+          if [ -n "${{ secrets.GA_MEASUREMENT_ID }}" ]; then
+            # Replace placeholder with actual GA Measurement ID
+            sed -i "s/G-XXXXXXXXXX/${{ secrets.GA_MEASUREMENT_ID }}/g" index.html
+            echo "✅ Google Analytics ID injected successfully"
+            echo "📊 Measurement ID: ${{ secrets.GA_MEASUREMENT_ID }}"
+          else
+            echo "⚠️  Warning: GA_MEASUREMENT_ID secret not set."
+            echo "📝 Using placeholder G-XXXXXXXXXX (tracking will not work)"
+            echo "💡 Add GA_MEASUREMENT_ID to repository secrets to enable tracking"
+          fi
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+

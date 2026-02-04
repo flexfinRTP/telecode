@@ -66,7 +66,7 @@ Click **"Save & Start Bot"**.
 
 ### Step 4: Start Chatting!
 
-Open Telegram and message your bot. Send `/start` to begin.
+Open Telegram and message your bot. **Send `/start` or `/help` first** to initialize the connection and see your bot's status.
 
 ---
 
@@ -86,10 +86,16 @@ Open Telegram and message your bot. Send `/start` to begin.
 ```
 You: /start
 
-Bot: 🚀 Welcome to TeleCode v0.2.0
+Bot: 🚀 Welcome to TeleCode v0.1
+     Your secure Telegram-to-Terminal bridge is active!
+     
      📂 Sandbox: Projects
-     🖥️ Screen: 🔓 Unlocked
+     🖥️ Screen: 🖥️ Display Off
      🎤 Voice: ✅ Enabled
+     🤖 Model: 🧠 Claude Opus 4.5
+     
+     Type /help to see available commands.
+     Use /model to change AI model.
 ```
 
 ---
