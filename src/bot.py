@@ -3103,35 +3103,26 @@ The AI changes have been applied via {shortcut}.
         logger.info("Turn Off Display requested from system tray")
         try:
             from .virtual_display_helper import turn_off_display_safe
-            from .custom_lock import is_locked, deactivate_lock, activate_lock
+            from .custom_lock import is_locked
             
-            # Check if already locked - if so, unlock instead
+            # Check if already locked - if so, do nothing (unlock happens via PIN entry)
             if is_locked():
-                logger.info("Display is locked - unlocking...")
-                deactivate_lock()
-                # Update tray icon state
-                if self.tray:
-                    self.tray.set_screen_locked(False)
+                logger.info("Display is already locked - unlock via PIN entry")
                 return
             
-            # Define unlock callback to update tray icon
+            # Define unlock callback to reset tray state when user unlocks via PIN
             def on_unlock():
+                """Called when user unlocks via PIN entry - reset tray state."""
                 if self.tray:
                     self.tray.set_screen_locked(False)
-                logger.info("Lock unlocked - tray icon updated")
-            
-            # Define unlock callback to update tray icon
-            def on_unlock():
-                if self.tray:
-                    self.tray.set_screen_locked(False)
-                logger.info("Lock unlocked - tray icon updated")
+                logger.info("Lock unlocked via PIN - tray state reset, ready for next Turn Off Display")
             
             # Use secure mode by default (password required on wake)
-            # Pass unlock callback so tray icon updates when user unlocks
+            # Pass unlock callback so tray icon resets when user unlocks via PIN
             success, message = turn_off_display_safe(secure=True, on_unlock=on_unlock)
             if success:
                 logger.info(f"Display turned off with secure lock: {message}")
-                # Update tray icon state
+                # Update tray icon state to locked (but menu still shows "Turn Off Display")
                 if self.tray:
                     self.tray.set_screen_locked(True)
             else:

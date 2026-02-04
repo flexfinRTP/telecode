@@ -343,6 +343,8 @@ class VirtualDisplayManager:
         
         if turn_on_display():
             self._display_off = False
+            # Note: Tray state is reset via unlock callback in custom_lock._unlock()
+            # This ensures tray is ready for next "Turn Off Display" action
             return True, "Monitor turned on"
         else:
             return False, "Failed to turn on monitor"

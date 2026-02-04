@@ -171,6 +171,180 @@ class CursorStatus(Enum):
     ERROR = "error"
 
 
+class WindowCapture:
+    """
+    Windows API-based window capture for screenshots behind lock overlay.
+    
+    Uses PrintWindow API to capture window content even when obscured by overlay.
+    This allows screenshots to show actual Cursor window content instead of the lock screen.
+    """
+    
+    @staticmethod
+    def capture_window_by_handle(hwnd: int) -> Optional[Image.Image]:
+        """
+        Capture window content using Windows API (works even when obscured).
+        
+        Args:
+            hwnd: Window handle (HWND)
+            
+        Returns:
+            PIL Image object, or None if failed
+        """
+        if not IS_WINDOWS or not WINDOWS_API_AVAILABLE:
+            return None
+        
+        try:
+            from PIL import Image
+            import ctypes
+            from ctypes import wintypes
+            
+            user32 = ctypes.windll.user32
+            gdi32 = ctypes.windll.gdi32
+            
+            # Get window dimensions
+            class RECT(ctypes.Structure):
+                _fields_ = [("left", ctypes.c_long),
+                           ("top", ctypes.c_long),
+                           ("right", ctypes.c_long),
+                           ("bottom", ctypes.c_long)]
+            
+            rect = RECT()
+            if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                logger.warning("Failed to get window rect")
+                return None
+            
+            width = rect.right - rect.left
+            height = rect.bottom - rect.top
+            
+            if width <= 0 or height <= 0:
+                logger.warning(f"Invalid window dimensions: {width}x{height}")
+                return None
+            
+            # Get window device context
+            hwnd_dc = user32.GetWindowDC(hwnd)
+            if not hwnd_dc:
+                logger.warning("Failed to get window DC")
+                return None
+            
+            try:
+                # Create compatible device context
+                mem_dc = gdi32.CreateCompatibleDC(hwnd_dc)
+                if not mem_dc:
+                    logger.warning("Failed to create compatible DC")
+                    return None
+                
+                try:
+                    # Create compatible bitmap
+                    bitmap = gdi32.CreateCompatibleBitmap(hwnd_dc, width, height)
+                    if not bitmap:
+                        logger.warning("Failed to create compatible bitmap")
+                        return None
+                    
+                    try:
+                        # Select bitmap into device context
+                        old_bitmap = gdi32.SelectObject(mem_dc, bitmap)
+                        
+                        # Use PrintWindow to capture window content (works even when obscured)
+                        # PW_RENDERFULLCONTENT = 0x00000002
+                        PW_RENDERFULLCONTENT = 0x2
+                        success = user32.PrintWindow(hwnd, mem_dc, PW_RENDERFULLCONTENT)
+                        
+                        if not success:
+                            # Fallback: Try BitBlt if PrintWindow fails
+                            logger.debug("PrintWindow failed, trying BitBlt")
+                            success = gdi32.BitBlt(mem_dc, 0, 0, width, height, hwnd_dc, 0, 0, 0x00CC0020)  # SRCCOPY
+                        
+                        gdi32.SelectObject(mem_dc, old_bitmap)
+                        
+                        if not success:
+                            logger.warning("Failed to capture window content")
+                            return None
+                        
+                        # Convert bitmap to PIL Image
+                        # Define BITMAPINFOHEADER structure
+                        class BITMAPINFOHEADER(ctypes.Structure):
+                            _fields_ = [
+                                ("biSize", wintypes.DWORD),
+                                ("biWidth", ctypes.c_long),
+                                ("biHeight", ctypes.c_long),
+                                ("biPlanes", wintypes.WORD),
+                                ("biBitCount", wintypes.WORD),
+                                ("biCompression", wintypes.DWORD),
+                                ("biSizeImage", wintypes.DWORD),
+                                ("biXPelsPerMeter", ctypes.c_long),
+                                ("biYPelsPerMeter", ctypes.c_long),
+                                ("biClrUsed", wintypes.DWORD),
+                                ("biClrImportant", wintypes.DWORD),
+                            ]
+                        
+                        class BITMAPINFO(ctypes.Structure):
+                            _fields_ = [("bmiHeader", BITMAPINFOHEADER),
+                                       ("bmiColors", wintypes.DWORD * 3)]
+                        
+                        bmp_info = BITMAPINFO()
+                        bmp_info.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+                        bmp_info.bmiHeader.biWidth = width
+                        bmp_info.bmiHeader.biHeight = -height  # Negative for top-down DIB
+                        bmp_info.bmiHeader.biPlanes = 1
+                        bmp_info.bmiHeader.biBitCount = 32
+                        bmp_info.bmiHeader.biCompression = 0  # BI_RGB
+                        
+                        # Allocate buffer for image data
+                        buffer_size = width * height * 4  # 32-bit RGBA
+                        buffer = (ctypes.c_byte * buffer_size)()
+                        
+                        # Get bitmap bits
+                        if not gdi32.GetDIBits(mem_dc, bitmap, 0, height, buffer, ctypes.byref(bmp_info), 0):
+                            logger.warning("Failed to get bitmap bits")
+                            return None
+                        
+                        # Create PIL Image from buffer
+                        # Note: Windows bitmap is BGR, PIL expects RGB
+                        img = Image.frombuffer('RGBA', (width, height), buffer, 'raw', 'BGRA', 0, 1)
+                        
+                        logger.info(f"Successfully captured window {hwnd} ({width}x{height})")
+                        return img
+                        
+                    finally:
+                        gdi32.DeleteObject(bitmap)
+                        
+                finally:
+                    gdi32.DeleteDC(mem_dc)
+                    
+            finally:
+                user32.ReleaseDC(hwnd, hwnd_dc)
+                
+        except Exception as e:
+            logger.error(f"Failed to capture window by handle: {e}", exc_info=True)
+            return None
+    
+    @staticmethod
+    def capture_cursor_window() -> Optional[Image.Image]:
+        """
+        Capture Cursor window using Windows API.
+        
+        Returns:
+            PIL Image object, or None if failed
+        """
+        if not IS_WINDOWS:
+            return None
+        
+        try:
+            # Find Cursor window (call at runtime to avoid forward reference)
+            # Use the public method which will call the Windows-specific implementation
+            hwnd = WindowManager.find_cursor_window()
+            if hwnd is None:
+                logger.warning("Cursor window not found for capture")
+                return None
+            
+            # Capture window content
+            return WindowCapture.capture_window_by_handle(hwnd)
+            
+        except Exception as e:
+            logger.error(f"Failed to capture Cursor window: {e}")
+            return None
+
+
 class WindowManager:
     """
     Cross-platform window management for Cursor IDE.
@@ -1208,6 +1382,9 @@ class CursorAgentBridge:
         """
         Capture a screenshot of the current screen (Cursor window).
         
+        When lock overlay is active, uses Windows API to capture window directly
+        (bypassing the overlay). Otherwise uses standard pyautogui screenshot.
+        
         Args:
             filename: Optional filename. If None, uses timestamp.
             
@@ -1230,6 +1407,37 @@ class CursorAgentBridge:
             
             screenshot_path = screenshots_dir / filename
             
+            # Check if lock overlay is active
+            is_locked = False
+            if IS_WINDOWS:
+                try:
+                    from .custom_lock import is_locked as check_lock
+                    is_locked = check_lock()
+                except Exception as e:
+                    logger.debug(f"Could not check lock state: {e}")
+            
+            # If locked, use Windows API to capture window directly (bypasses overlay)
+            if is_locked and IS_WINDOWS and WINDOWS_API_AVAILABLE:
+                logger.info("Lock overlay detected - using Windows API window capture")
+                try:
+                    from PIL import Image
+                    window_image = WindowCapture.capture_cursor_window()
+                    
+                    if window_image:
+                        window_image.save(str(screenshot_path))
+                        logger.info(f"Window capture screenshot saved: {screenshot_path}")
+                        return screenshot_path
+                    else:
+                        logger.warning("Window capture failed, falling back to standard screenshot")
+                        # Fall through to standard method
+                except ImportError:
+                    logger.warning("PIL not available for window capture, using standard method")
+                    # Fall through to standard method
+                except Exception as e:
+                    logger.warning(f"Window capture error: {e}, falling back to standard screenshot")
+                    # Fall through to standard method
+            
+            # Standard screenshot method (when not locked or as fallback)
             # Focus Cursor window first for better screenshot
             WindowManager.focus_cursor_window()
             time.sleep(0.3)

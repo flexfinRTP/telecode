@@ -143,11 +143,11 @@ class TrayIcon:
         
         # Platform-specific headless/display options
         if IS_WINDOWS:
-            # Windows: Turn off display (works on all editions, pyautogui works!)
-            display_label = "🖥️ Turn On Display" if self._screen_locked else "🖥️ Turn Off Display"
+            # Windows: Turn off display (always available - unlock happens via PIN entry)
+            # Note: Display is turned on via unlock (entering PIN), not via tray
             items.extend([
                 pystray.MenuItem(
-                    display_label,
+                    "🖥️ Turn Off Display",
                     self._on_lock_screen_click
                 ),
                 pystray.Menu.SEPARATOR,
@@ -180,16 +180,24 @@ class TrayIcon:
             self.on_settings()
     
     def _on_lock_screen_click(self, icon, item):
-        """Handle Turn Off Display toggle click."""
+        """Handle Turn Off Display click."""
+        # Always just call the callback - no state toggling
+        # The callback will handle turning off display and locking
+        # Unlock happens via PIN entry, which will reset state via set_screen_locked(False)
         if self.on_lock_screen:
             self.on_lock_screen()
-            # Toggle state (will be updated by caller if operation succeeds)
-            self._screen_locked = not self._screen_locked
-            self._refresh_menu()
     
     def set_screen_locked(self, locked: bool):
-        """Update the display off status for menu display."""
+        """
+        Update the display lock status.
+        
+        Args:
+            locked: True when display is off and locked, False when unlocked
+                   When False, tray is ready for next "Turn Off Display" action
+        """
         self._screen_locked = locked
+        # Menu always shows "Turn Off Display" - no need to refresh
+        # But refresh anyway to ensure menu is up to date
         self._refresh_menu()
     
     def _on_virtual_display_click(self, icon, item):
