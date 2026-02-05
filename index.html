@@ -127,19 +127,14 @@
       "description": "Vice-to-code AI agent for controlling Cursor from Telegram"
     }
     </script>
-    <!-- Google Analytics 4 (GA4) -->
+    <!-- Google tag (gtag.js) -->
     <!-- GA Measurement ID is injected from GitHub Secrets during deployment -->
-    <!-- For local development, replace G-XXXXXXXXXX with your Measurement ID -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
     <script>
         window.dataLayer = window.dataLayer || [];
         function gtag(){dataLayer.push(arguments);}
         gtag('js', new Date());
-        gtag('config', 'G-XXXXXXXXXX', {
-            'page_title': 'TeleCode - Voice-to-Code AI Agent',
-            'page_location': window.location.href,
-            'send_page_view': true
-        });
+        gtag('config', 'G-XXXXXXXXXX');
     </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
