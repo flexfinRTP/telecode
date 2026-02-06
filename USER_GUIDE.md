@@ -980,6 +980,107 @@ Rate limiting prevents abuse and protects your system.
 
 ---
 
+## Complete Command Reference
+
+This is the **definitive list** of all TeleCode commands. Every command available in the bot is documented here.
+
+### Getting Started & Help
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/start` | Welcome message and current status | `/start` |
+| `/help` | List all available commands | `/help` |
+| `/info` | System information (CPU, memory, lock status) | `/info` |
+| `/pwd` | Show current working directory | `/pwd` |
+
+### Project Management
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/create` | Create new project (interactive wizard) | `/create` |
+| `/cancel` | Cancel current conversation (create/commit) | `/cancel` |
+
+### Git Operations
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/status` | Show git status of current directory | `/status` |
+| `/diff` | Show uncommitted changes (with action buttons) | `/diff` |
+| `/push` | Push committed changes to remote | `/push` |
+| `/pull` | Pull latest changes from remote | `/pull` |
+| `/commit [msg]` | Stage and commit all changes | `/commit Fix bug` or `/commit` (interactive) |
+| `/revert CONFIRM` | Discard all uncommitted changes ⚠️ | `/revert CONFIRM` |
+| `/log [count]` | Show recent git commits | `/log` or `/log 10` |
+| `/branch` | List git branches | `/branch` |
+
+### File Navigation
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/ls [path]` | List directory contents | `/ls` or `/ls src` |
+| `/ls -R [path]` | List entire worktree recursively | `/ls -R` or `/ls -R src` |
+| `/ls --recursive [path]` | Same as `/ls -R` | `/ls --recursive` |
+| `/read [file]` | Read file contents | `/read README.md` |
+| `/pwd` | Show current path | `/pwd` |
+
+### Sandbox Management
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/sandbox` | Switch sandbox directory (shows list) | `/sandbox` |
+| `/sandbox [index]` | Switch by index number | `/sandbox 2` |
+| `/sandbox [name]` | Switch by sandbox name | `/sandbox Projects` |
+| `/sandboxes` | List all sandbox directories | `/sandboxes` |
+
+### AI Control (Cursor)
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/ai [prompt]` | Send prompt to Cursor AI | `/ai Add error handling` |
+| `/ai accept` | Accept AI changes in Cursor (Ctrl+Enter) | `/ai accept` |
+| `/ai reject` | Reject AI changes in Cursor (Escape) | `/ai reject` |
+| `/ai continue [prompt]` | Continue with follow-up prompt | `/ai continue Add tests` |
+| `/ai stop` | Stop/clear current AI session | `/ai stop` |
+| `/ai status` | Check agent status and pending changes | `/ai status` |
+| `/ai mode` | Show mode selection menu | `/ai mode` |
+| `/ai mode [agent\|chat]` | Set prompt mode | `/ai mode agent` |
+
+**Note:** You can also send text or voice messages directly (without `/ai`) as AI prompts!
+
+### Model Selection
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/model` | Interactive model selection with buttons | `/model` |
+| `/model [alias]` | Quick switch to specific model | `/model opus` or `/model haiku` |
+| `/models` | List all available models with descriptions | `/models` |
+
+**Available Model Aliases:**
+- `opus` - Claude Opus 4.5 (best reasoning, paid)
+- `sonnet` - Claude Sonnet 4.5 (balanced, paid)
+- `haiku` - Claude Haiku 4.5 (fast, free)
+- `gemini` - Gemini 3 Flash (large context, free)
+- `gpt` - GPT-4.1 (paid)
+
+### Cursor IDE Control
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/cursor` | Check Cursor IDE status and show open button | `/cursor` |
+| `/cursor open` | Open Cursor with current workspace | `/cursor open` |
+| `/cursor status` | Just check status without opening | `/cursor status` |
+
+### Lock PIN (Windows Only)
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/pin` | View current PIN (masked) | `/pin` |
+| `/pin set <pin>` | Set lock PIN (can use Windows password) | `/pin set 1234` |
+
+**Note:** PIN commands are only available on Windows. The PIN is used when unlocking the display.
+
+---
+
 ## Quick Reference Card
 
 | Task | Command |
@@ -1001,24 +1102,24 @@ Rate limiting prevents abuse and protects your system.
 | AI continue | `/ai continue [prompt]` |
 | AI stop | `/ai stop` |
 | AI status | `/ai status` |
-| AI mode | `/ai mode [agent|chat]` |
+| AI mode | `/ai mode [agent\|chat]` |
 | **Select model** | `/model` |
 | Quick model switch | `/model opus`, `/model haiku` |
 | List models | `/models` |
 | **Open Cursor** | `/cursor` or `/cursor open` 💻 |
 | Switch sandbox | `/sandbox` or `/sandboxes` 📂 |
 | List files | `/ls` |
+| **List worktree** | `/ls -R` |
 | Read file | `/read [file]` |
 | Current path | `/pwd` |
 | System info | `/info` |
+| **Set PIN (Win)** | `/pin set <pin>` |
 
 ---
 
 ## Need More Help?
 
-- **Security concerns?** See [SECURITY.md](SECURITY.md)
 - **Technical details?** See the main [README.md](../README.md)
 - **Found a bug?** Open an issue on GitHub
 
 Happy remote coding! 🚀
-

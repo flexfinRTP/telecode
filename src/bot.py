@@ -44,7 +44,7 @@ from datetime import datetime
 from typing import Optional
 from collections import defaultdict
 
-from telegram import Update, BotCommand
+from telegram import Update, BotCommand, ForceReply
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -54,7 +54,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     filters
 )
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 
 from .security import (
     SecuritySentinel,
@@ -279,6 +279,9 @@ class TeleCodeBot:
             # Cursor control command
             CommandHandler("cursor", self._cmd_cursor),
             
+            # Screenshot command
+            CommandHandler("screenshot", self._cmd_screenshot),
+            
             # Model selection commands
             CommandHandler("model", self._cmd_model),
             CommandHandler("models", self._cmd_models),
@@ -304,6 +307,9 @@ class TeleCodeBot:
             # Voice message handler
             MessageHandler(filters.VOICE, self._handle_voice),
             
+            # Photo/image handler for screenshots
+            MessageHandler(filters.PHOTO, self._handle_photo),
+            
             # Plain text as AI prompt
             MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_text),
         ]
@@ -325,6 +331,7 @@ class TeleCodeBot:
             BotCommand("revert", "Discard changes"),
             BotCommand("ai", "Run AI prompt"),
             BotCommand("cursor", "Check/open Cursor IDE"),
+            BotCommand("screenshot", "Capture Cursor Composer chat with OCR"),
             BotCommand("model", "Select AI model"),
             BotCommand("models", "List available models"),
             BotCommand("cd", "Change directory"),
@@ -475,7 +482,7 @@ class TeleCodeBot:
                 model_display = "🤖 Default"
             
             welcome = f"""
-🚀 **Welcome to TeleCode v0.1**
+🚀 **Welcome to TeleCode v0.2**
 
 Your secure Telegram-to-Terminal bridge is active!
 
@@ -527,6 +534,7 @@ Use /model to change AI model.
 
 **Navigation:**
   /ls [path] - List files
+  /ls -R [path] - List entire worktree recursively
   /read [file] - Read file contents
   /pwd - Show current path
 
@@ -545,6 +553,7 @@ Use /model to change AI model.
   /model - Select AI model
   /models - List available models
   /cursor - Check Cursor status/open 💻
+  /screenshot - Capture Composer chat with OCR 📸
   _(or just send text/voice)_
 
 **System:**
@@ -932,15 +941,54 @@ Use /model to change AI model.
     
     @require_auth
     async def _cmd_ls(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """List directory contents."""
-        path = " ".join(context.args) if context.args else None
-        self.sentinel.log_command(update.effective_user.id, f"/ls {path or ''}")
+        """
+        List directory contents.
         
-        result = self.cli.list_directory(path)
+        Usage:
+            /ls                    - List current directory
+            /ls <path>             - List specific directory
+            /ls -R                 - Recursively list entire worktree
+            /ls --recursive        - Recursively list entire worktree
+            /ls -R <path>          - Recursively list from specific path
+        """
+        args = context.args or []
+        recursive = False
+        path = None
         
-        header = f"📂 Contents of `{path or self.cli.current_dir.name}`"
+        # Parse flags and path
+        for arg in args:
+            if arg in ('-R', '--recursive', '-r'):
+                recursive = True
+            elif not arg.startswith('-'):
+                # This is the path argument
+                if path is None:
+                    path = arg
+                else:
+                    # Multiple path arguments - join them
+                    path = f"{path} {arg}"
+        
+        # If no path specified but recursive flag is present, use current directory
+        if recursive and path is None:
+            path = None  # Will default to current_dir
+        
+        # Join remaining args if path was split
+        if path is None and args:
+            # Check if any non-flag args remain
+            non_flag_args = [a for a in args if not a.startswith('-')]
+            if non_flag_args:
+                path = " ".join(non_flag_args)
+        
+        command_str = f"/ls {'-R ' if recursive else ''}{path or ''}".strip()
+        self.sentinel.log_command(update.effective_user.id, command_str)
+        
+        result = self.cli.list_directory(path, recursive=recursive)
+        
         if result.success:
-            message = f"{header}\n\n{result.stdout}"
+            if recursive:
+                message = result.stdout
+            else:
+                header = f"📂 Contents of `{path or self.cli.current_dir.name}`"
+                message = f"{header}\n\n{result.stdout}"
         else:
             message = f"❌ {result.stderr}"
         
@@ -1001,19 +1049,26 @@ Use /model to change AI model.
         # Switch by index or name
         arg = " ".join(context.args)
         
-        # Try as index first
+        # Try as index first (convert from 1-based user input to 0-based internal index)
         try:
-            index = int(arg)
+            user_index = int(arg)
+            if user_index < 1 or user_index > len(info['sandboxes']):
+                await update.message.reply_text(
+                    f"❌ Invalid index: {user_index}\n\n"
+                    f"Please use a number between 1 and {len(info['sandboxes'])}.\n"
+                    f"Use /sandboxes to see available sandboxes."
+                )
+                return
+            index = user_index - 1  # Convert 1-based to 0-based
             success, msg = sandbox_config.set_current(index)
             if success:
                 # Reload sentinel with new current sandbox
-                # Note: This requires restart for full effect, but we can update CLI
                 new_path = sandbox_config.get_current()
                 if new_path:
                     self.cli.current_dir = Path(new_path)
                     self.sentinel.dev_root = Path(new_path)
                     self.sentinel.log_command(update.effective_user.id, f"/sandbox switch to {Path(new_path).name}")
-                    await update.message.reply_text(f"✅ {msg}\n\n⚠️ Restart TeleCode for full effect.")
+                    await update.message.reply_text(f"✅ {msg}")
                 else:
                     await update.message.reply_text(f"❌ {msg}")
             else:
@@ -1030,7 +1085,7 @@ Use /model to change AI model.
                             self.cli.current_dir = Path(new_path)
                             self.sentinel.dev_root = Path(new_path)
                             self.sentinel.log_command(update.effective_user.id, f"/sandbox switch to {Path(new_path).name}")
-                            await update.message.reply_text(f"✅ {msg}\n\n⚠️ Restart TeleCode for full effect.")
+                            await update.message.reply_text(f"✅ {msg}")
                         found = True
                         break
             
@@ -1081,7 +1136,6 @@ Use /model to change AI model.
                         self.sentinel.log_command(user_id, f"/sandbox switch to {Path(new_path).name}")
                         await query.message.reply_text(
                             f"✅ {msg}\n\n"
-                            f"⚠️ **Restart TeleCode** for full effect.\n\n"
                             f"Current sandbox: `{Path(new_path).name}`",
                             parse_mode="Markdown"
                         )
@@ -3040,15 +3094,23 @@ The AI changes have been applied via {shortcut}.
                 await query.message.reply_text(response, parse_mode="Markdown", reply_markup=reply_markup)
         
         elif callback_data == "ai_prompt_start":
-            # Prompt user to send an AI message
+            # Prompt user to send an AI message with a keyboard button that sends "/ai "
             self.sentinel.log_command(user_id, "ai prompt start (button)")
+            
+            # Create a keyboard button that sends "/ai " as text
+            keyboard = [[KeyboardButton("/ai ")]]
+            reply_markup = ReplyKeyboardMarkup(
+                keyboard,
+                one_time_keyboard=True,
+                resize_keyboard=True
+            )
             
             await query.message.reply_text(
                 "🤖 **Ready for AI Prompt**\n\n"
-                "Send your coding request as a message.\n\n"
-                "_Example: \"Create a login form with validation\"_\n\n"
-                "Or use: `/ai <your prompt>`",
-                parse_mode="Markdown"
+                "Click the button below to start, then type your prompt:\n\n"
+                "_Example: \"create a login form with validation\"_",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
             )
     
     # ==========================================
@@ -3085,11 +3147,273 @@ The AI changes have been applied via {shortcut}.
             await update.message.reply_text(f"❌ Transcription failed: {text}")
     
     @require_auth
+    async def _handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle photo/image messages - download, ensure Cursor is fullscreen, and process with OCR."""
+        try:
+            await update.message.reply_text("📸 Processing screenshot...")
+            
+            # Get the Cursor Agent
+            agent = self._get_cursor_agent()
+            
+            # Ensure Cursor is focused and fullscreen before processing
+            from .cursor_agent import WindowManager
+            WindowManager.focus_cursor_window()
+            time.sleep(0.5)  # Give time for fullscreen transition
+            
+            # Download the photo
+            photo = update.message.photo[-1]  # Get highest resolution
+            file = await context.bot.get_file(photo.file_id)
+            
+            # Save to temporary file
+            temp_dir = Path(tempfile.gettempdir()) / "telecode_screenshots"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            temp_path = temp_dir / f"telegram_screenshot_{timestamp}.png"
+            
+            await file.download_to_drive(str(temp_path))
+            logger.info(f"Downloaded screenshot from Telegram: {temp_path}")
+            
+            # Process with OCR
+            ocr_result = agent.extract_text_from_screenshot(temp_path, filter_code_blocks=True)
+            
+            if ocr_result.success and ocr_result.data:
+                ocr_summary = ocr_result.data.get("summary", "")
+                raw_text = ocr_result.data.get("raw_text", "")
+                line_count = ocr_result.data.get("line_count", 0)
+                
+                if ocr_summary and len(ocr_summary.strip()) > 10:
+                    message = f"📝 **OCR Results** ({line_count} lines):\n\n{ocr_summary}"
+                    
+                    # Send OCR results
+                    if len(message) > 4096:
+                        # Send as document if too long
+                        await self._send_ocr_as_document(
+                            update.message,
+                            ocr_summary,
+                            "ocr_result.txt",
+                            "📝 **OCR Results**"
+                        )
+                    else:
+                        await update.message.reply_text(
+                            self._truncate_message(message),
+                            parse_mode="Markdown"
+                        )
+                else:
+                    await update.message.reply_text(
+                        "📸 Screenshot received, but no text detected via OCR.\n\n"
+                        "Cursor is now focused and fullscreen for better screenshots."
+                    )
+            else:
+                await update.message.reply_text(
+                    f"❌ OCR processing failed: {ocr_result.error or 'Unknown error'}\n\n"
+                    "Cursor is now focused and fullscreen."
+                )
+            
+            # Clean up temp file
+            try:
+                if temp_path.exists():
+                    temp_path.unlink()
+            except Exception as e:
+                logger.debug(f"Could not delete temp file: {e}")
+                
+        except Exception as e:
+            logger.error(f"Failed to process photo: {e}", exc_info=True)
+            await update.message.reply_text(
+                f"❌ Failed to process screenshot: {str(e)}"
+            )
+    
+    @require_auth
+    async def _cmd_screenshot(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Capture screenshot of Cursor Composer chat and extract text via OCR.
+        
+        SEC-006: Screenshot command with OCR transcription.
+        - Authenticated via @require_auth
+        - Rate limited via CommandRateLimiter
+        - Logs command for audit trail
+        - Sanitizes OCR output before sending
+        """
+        try:
+            user_id = update.effective_user.id
+            self.sentinel.log_command(user_id, "/screenshot")
+            
+            # Send initial status
+            status_msg = await update.message.reply_text("📸 Capturing screenshot and extracting text...")
+            
+            # Get the Cursor Agent
+            agent = self._get_cursor_agent()
+            
+            # Ensure Cursor is focused and fullscreen for better screenshot quality
+            from .cursor_agent import WindowManager
+            WindowManager.focus_cursor_window()
+            time.sleep(0.5)  # Give time for fullscreen transition
+            
+            # Capture screenshot
+            screenshot_path = agent.capture_screenshot()
+            
+            if not screenshot_path or not Path(screenshot_path).exists():
+                await status_msg.edit_text(
+                    "❌ **Failed to capture screenshot**\n\n"
+                    "Make sure Cursor IDE is open and visible."
+                )
+                return
+            
+            # Extract text via OCR (get full text, not filtered)
+            # Use filter_code_blocks=False to get complete transcription
+            ocr_result = agent.extract_text_from_screenshot(
+                screenshot_path=screenshot_path,
+                filter_code_blocks=False  # Get full transcription
+            )
+            
+            # Prepare response
+            if ocr_result.success and ocr_result.data:
+                raw_text = ocr_result.data.get("raw_text", "")
+                line_count = ocr_result.data.get("line_count", 0)
+                
+                # SEC-005: Sanitize OCR output before sending
+                sanitized_text = self._sanitize_output(raw_text) if raw_text else ""
+                
+                # Send screenshot with caption
+                try:
+                    with open(screenshot_path, 'rb') as photo:
+                        caption = f"📸 **Cursor Composer Screenshot**\n\n"
+                        if line_count > 0:
+                            caption += f"📝 Extracted {line_count} lines of text"
+                        else:
+                            caption += "⚠️ No text detected in screenshot"
+                        
+                        await update.message.reply_photo(
+                            photo=photo,
+                            caption=caption[:1024],  # Telegram caption limit
+                            parse_mode="Markdown"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to send screenshot: {e}")
+                    await status_msg.edit_text(
+                        "❌ **Failed to send screenshot**\n\n"
+                        f"Error: {str(e)}"
+                    )
+                    return
+                
+                # Send OCR text separately
+                if sanitized_text and len(sanitized_text.strip()) > 10:
+                    # Use document if text is too long
+                    if len(sanitized_text) > 3500:
+                        await self._send_ocr_as_document(
+                            update.message,
+                            sanitized_text,
+                            filename=f"cursor_composer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                            caption="📝 **Full OCR Transcription**"
+                        )
+                    else:
+                        await update.message.reply_text(
+                            f"📝 **OCR Transcription** ({line_count} lines):\n\n"
+                            f"```\n{sanitized_text}\n```",
+                            parse_mode="Markdown"
+                        )
+                    
+                    # Update status message
+                    await status_msg.edit_text(
+                        f"✅ **Screenshot captured and transcribed**\n\n"
+                        f"📸 Screenshot sent\n"
+                        f"📝 {line_count} lines extracted via OCR"
+                    )
+                else:
+                    await status_msg.edit_text(
+                        "✅ **Screenshot captured**\n\n"
+                        "📸 Screenshot sent\n"
+                        "⚠️ No readable text detected via OCR"
+                    )
+            else:
+                # OCR failed but screenshot was captured
+                error_msg = ocr_result.error or "Unknown OCR error"
+                logger.warning(f"OCR extraction failed: {error_msg}")
+                
+                # Check if it's a Tesseract installation issue
+                is_installation_error = (
+                    "tesseract" in error_msg.lower() and 
+                    ("not installed" in error_msg.lower() or "not in your PATH" in error_msg.lower())
+                )
+                
+                # Still send screenshot
+                try:
+                    with open(screenshot_path, 'rb') as photo:
+                        caption = "📸 **Cursor Composer Screenshot**\n\n"
+                        if is_installation_error:
+                            caption += "⚠️ OCR unavailable (Tesseract not installed)"
+                        else:
+                            caption += "⚠️ OCR extraction failed"
+                        
+                        await update.message.reply_photo(
+                            photo=photo,
+                            caption=caption,
+                            parse_mode="Markdown"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to send screenshot: {e}")
+                
+                # Provide helpful installation instructions if Tesseract is missing
+                if is_installation_error:
+                    if sys.platform == "win32":
+                        install_info = (
+                            "**To enable OCR transcription:**\n\n"
+                            "1. Download Tesseract installer:\n"
+                            "   https://github.com/UB-Mannheim/tesseract/wiki\n\n"
+                            "2. Install and add to PATH\n\n"
+                            "3. Restart TeleCode bot"
+                        )
+                    elif sys.platform == "darwin":
+                        install_info = (
+                            "**To enable OCR transcription:**\n\n"
+                            "```bash\nbrew install tesseract\n```\n\n"
+                            "Then restart TeleCode bot"
+                        )
+                    else:
+                        install_info = (
+                            "**To enable OCR transcription:**\n\n"
+                            "```bash\nsudo apt install tesseract-ocr\n```\n\n"
+                            "Then restart TeleCode bot"
+                        )
+                    
+                    await status_msg.edit_text(
+                        f"✅ **Screenshot captured**\n\n"
+                        f"📸 Screenshot sent\n\n"
+                        f"{install_info}"
+                    )
+                else:
+                    await status_msg.edit_text(
+                        f"⚠️ **Screenshot captured, but OCR failed**\n\n"
+                        f"📸 Screenshot sent\n\n"
+                        f"Error: {error_msg}\n\n"
+                        "Screenshot sent without transcription."
+                    )
+                
+        except Exception as e:
+            logger.error(f"Screenshot command failed: {e}", exc_info=True)
+            try:
+                await update.message.reply_text(
+                    f"❌ **Screenshot command failed**\n\n"
+                    f"Error: {str(e)}"
+                )
+            except Exception:
+                pass
+    
+    @require_auth
     async def _handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle plain text messages as AI prompts."""
         text = update.message.text.strip()
         
         if not text:
+            return
+        
+        # If message is just "/ai " or "/ai" (from keyboard button), prompt for actual prompt with ForceReply
+        if text == "/ai " or text == "/ai":
+            await update.message.reply_text(
+                "🤖 **AI Prompt Ready**\n\n"
+                "Now type your prompt (you can start with `/ai ` if needed):",
+                parse_mode="Markdown",
+                reply_markup=ForceReply(selective=True)
+            )
             return
         
         # Treat as AI prompt

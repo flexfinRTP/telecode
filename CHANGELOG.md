@@ -10,6 +10,220 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.5] - 2026-02-03
+
+### 🐛 Fixed
+
+#### AI Completion Detection
+- **Fixed premature "Cursor AI Completed" messages**: Implemented robust poll history tracking to ensure completion is only shown when lines have truly stopped changing
+- **Poll history verification**: Now requires at least 5 consecutive polls showing no changes before declaring completion
+- **Improved change detection**: Tracks both immediate changes and ongoing changes via poll history comparison
+- **Better stability verification**: Only shows "completed" when:
+  - Lines have stopped changing (verified by poll history)
+  - Stable count meets threshold (10 polls = 30 seconds)
+  - Minimum processing time has passed (15 seconds)
+  - Poll history confirms stability (at least 5 polls with no changes)
+- **Enhanced logging**: Added detailed logging to track poll history and stability verification
+
+### Technical Details
+
+#### Implementation
+- Added `poll_history` tracking to store last 5 poll results (files and diff size)
+- Enhanced `lines_still_changing` detection by comparing all recent polls
+- Only increment `stable_count` when poll history confirms no ongoing changes
+- Clear poll history when changes are detected to start fresh tracking
+- Improved status messages to show "verifying stability..." when building confidence
+
+## [0.2.4] - 2026-02-03
+
+### 📸 Screenshot Command with OCR Transcription
+
+Added a new `/screenshot` command that captures the Cursor Composer chat window and performs OCR transcription of the entire AI prompt output.
+
+### Added
+
+#### Screenshot Command
+- **`/screenshot`** - Capture Cursor Composer chat with full OCR transcription
+- **Automatic fullscreen**: Ensures Cursor is focused and maximized before capture
+- **Full text extraction**: Uses OCR to transcribe entire AI output (not filtered)
+- **Dual output**: Sends both screenshot image and transcribed text
+- **Smart formatting**: Long transcriptions sent as documents for better readability
+- **Error handling**: Graceful fallback if OCR fails (still sends screenshot)
+
+#### Security & Architecture
+- **SEC-006**: New security standard for screenshot commands
+- **Authenticated**: Uses `@require_auth` decorator for user validation
+- **Rate limited**: Protected by CommandRateLimiter (30 commands/minute)
+- **Audit logged**: All screenshot commands logged for security review
+- **Output sanitization**: OCR text sanitized before sending (SEC-005 compliance)
+- **Path validation**: Screenshot paths validated against security boundaries
+
+### Changed
+
+#### Help Menu
+- Added `/screenshot` command to help menu under "AI Control" section
+- Added to Telegram bot command list for autocomplete
+
+### Technical Details
+
+#### Implementation
+- Reuses existing `capture_screenshot()` method from `CursorAgentBridge`
+- Reuses existing `extract_text_from_screenshot()` method with `filter_code_blocks=False`
+- Follows existing command handler patterns and error handling
+- Uses `WindowManager.focus_cursor_window()` for optimal screenshot quality
+- Leverages `_send_ocr_as_document()` for long transcriptions
+
+#### Security Architecture
+- ✅ User authentication via SecuritySentinel
+- ✅ Rate limiting via CommandRateLimiter
+- ✅ Command audit logging
+- ✅ OCR output sanitization (tokens, paths, sensitive data)
+- ✅ Error handling prevents information leakage
+- ✅ No breaking changes to existing functionality
+
+### Usage
+
+```
+# Capture screenshot and transcribe
+/screenshot
+
+# Command automatically:
+# 1. Focuses and maximizes Cursor window
+# 2. Captures screenshot of Composer chat
+# 3. Extracts text via OCR
+# 4. Sends screenshot image
+# 5. Sends transcribed text (or document if long)
+```
+
+---
+
+## [0.2.3] - 2026-02-03
+
+### 📂 Enhanced /ls Command - Recursive Worktree Listing
+
+Enhanced the `/ls` command to support recursive listing of the entire worktree, providing comprehensive file system visibility while maintaining security best practices.
+
+### Added
+
+#### Recursive Directory Listing
+- **`/ls -R`** or **`/ls --recursive`** - Recursively list entire worktree
+- **`/ls -R [path]`** - Recursively list from specific directory
+- **Smart filtering**: Automatically skips common build/cache directories (node_modules, __pycache__, .venv, etc.)
+- **File sizes**: Shows human-readable file sizes (B, KB, MB, GB)
+- **Indented tree structure**: Clear visual hierarchy with indentation
+- **Depth limiting**: Maximum recursion depth of 10 levels (security feature)
+- **Hidden file handling**: Skips hidden files/directories except .git
+
+#### Security Enhancements
+- **Path validation**: Every path validated against sandbox boundaries during recursion
+- **Permission handling**: Graceful handling of permission-denied directories
+- **Output sanitization**: Maintains existing security sanitization for all outputs
+- **Audit logging**: All recursive listings logged for security audit
+
+### Changed
+
+#### Enhanced `/ls` Command
+- **Default behavior**: Unchanged - still lists current directory by default
+- **Recursive mode**: New optional flag for full worktree listing
+- **Better formatting**: Improved output with file sizes and tree structure
+- **Error handling**: Enhanced error messages for permission issues
+
+### Technical Details
+
+#### Implementation
+- Added `recursive` parameter to `CLIWrapper.list_directory()`
+- Added `max_depth` parameter (default 10) to prevent infinite recursion
+- Added `_format_size()` helper for human-readable file sizes
+- Enhanced path validation during recursive traversal
+- Maintains all existing security checks (sandbox validation, blocked file patterns)
+
+#### Security Architecture
+- ✅ All paths validated against sandbox boundaries
+- ✅ Recursion depth limited to prevent DoS
+- ✅ Permission errors handled gracefully
+- ✅ Blocked file patterns still enforced
+- ✅ Audit logging for all operations
+
+### Usage Examples
+
+```
+# List current directory (unchanged)
+/ls
+
+# List specific directory
+/ls src
+
+# List entire worktree recursively
+/ls -R
+
+# List specific directory recursively
+/ls -R src/components
+```
+
+---
+
+## [0.2.2] - 2026-02-03
+
+### 🖥️ Fullscreen Cursor Focus for Screenshots & OCR
+
+Enhanced screenshot and OCR functionality to ensure Cursor window is always maximized to fullscreen when processing screenshots, improving screenshot quality and OCR accuracy.
+
+### Added
+
+#### Photo/Image Handler for Telegram Screenshots
+- **New photo handler**: Process screenshots sent directly to Telegram via photo messages
+- **Automatic fullscreen**: Ensures Cursor is focused and fullscreen before OCR processing
+- **OCR extraction**: Extracts text from uploaded screenshots using Tesseract OCR
+- **Smart filtering**: Filters out code blocks and technical syntax, keeping only natural language summaries
+- **User feedback**: Provides clear status messages during processing
+
+### Changed
+
+#### Fullscreen Focus on All Platforms
+- **Windows**: `focus_cursor_window()` now maximizes window using `SW_MAXIMIZE` (Win32 API)
+- **macOS**: Uses AppleScript to set `AXFullscreen` attribute or zoom window
+- **Linux**: Uses `xdotool` or `wmctrl` to maximize window (MAXIMIZED_VERT + MAXIMIZED_HORZ)
+- **All focus actions**: Every cursor focus operation now automatically makes window fullscreen
+
+#### Screenshot Capture Improvements
+- **Enhanced timing**: Increased wait time to 0.5s after fullscreen transition for better screenshot quality
+- **Fullscreen before capture**: All screenshot operations now ensure Cursor is fullscreen first
+- **Better OCR results**: Fullscreen screenshots provide more context and better text recognition
+
+### Fixed
+
+#### Consistent Fullscreen Behavior
+- **All cursor focus actions**: Now consistently use fullscreen mode
+  - Screenshot capture operations
+  - OCR text extraction
+  - Photo processing from Telegram
+  - All AI prompt operations
+  - Accept/Reject actions
+  - Continue/Stop operations
+  - All other cursor interactions
+
+### Technical Details
+
+#### Updated Methods
+- `WindowManager._focus_cursor_window_windows()`: Added `SW_MAXIMIZE` after restore
+- `WindowManager._focus_cursor_window_macos()`: Added fullscreen AppleScript commands
+- `WindowManager._focus_cursor_window_linux()`: Added window maximization via xdotool/wmctrl
+- `CursorAgentBridge.capture_screenshot()`: Enhanced with fullscreen focus and longer wait time
+- `TeleCodeBot._handle_photo()`: New handler for processing Telegram photo messages
+
+#### Cross-Platform Support
+- Windows: Uses Win32 API `ShowWindow(hwnd, SW_MAXIMIZE)`
+- macOS: Uses AppleScript `AXFullscreen` attribute or zoom button
+- Linux: Uses `xdotool windowstate --add MAXIMIZED_VERT/MAXIMIZED_HORZ` or `wmctrl -b add,maximized_vert,maximized_horz`
+
+### User Experience
+- **Better screenshots**: Fullscreen captures show more context and are easier to read
+- **Improved OCR**: Fullscreen screenshots provide better text recognition accuracy
+- **Seamless workflow**: All cursor operations automatically use fullscreen without user intervention
+- **Photo support**: Users can now send screenshots directly to Telegram for OCR processing
+
+---
+
 ## [0.2.1] - 2026-02-03
 
 ### 🔍 Model Pricing Audit - Cursor 2026 Pricing Model

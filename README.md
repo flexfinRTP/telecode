@@ -265,6 +265,12 @@ TeleCode stores configuration in a `.env` file. You can configure via:
 | `/sandbox` | Switch sandbox directory |
 | `/sandboxes` | List all sandbox directories |
 | `/ls [path]` | List files |
+| `/ls -R [path]` | List entire worktree recursively |
+| `/read [file]` | Read file contents |
+| `/pwd` | Show current path |
+| `/pin` | View lock PIN (Windows only) |
+| `/pin set <pin>` | Set lock PIN (Windows only) |
+| `/cancel` | Cancel current conversation |
 | `/read [file]` | Read file contents |
 | `/pwd` | Show current path |
 

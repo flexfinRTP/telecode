@@ -27,16 +27,8 @@ if errorlevel 1 (
 echo Building TeleCode executable...
 echo.
 
-pyinstaller --onefile ^
-    --windowed ^
-    --name TeleCode ^
-    --add-data "env.example;." ^
-    --add-data "README.md;." ^
-    --hidden-import "telegram" ^
-    --hidden-import "telegram.ext" ^
-    --hidden-import "speech_recognition" ^
-    --hidden-import "pydub" ^
-    main.py
+REM Use the spec file which includes all necessary imports
+pyinstaller --clean --noconfirm build\telecode_windows.spec
 
 if errorlevel 1 (
     echo.

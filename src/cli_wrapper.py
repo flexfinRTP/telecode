@@ -702,12 +702,14 @@ class CLIWrapper:
     # File Operations
     # ==========================================
     
-    def list_directory(self, path: Optional[str] = None) -> CommandResult:
+    def list_directory(self, path: Optional[str] = None, recursive: bool = False, max_depth: int = 10) -> CommandResult:
         """
         List contents of a directory.
         
         Args:
             path: Directory path (defaults to current_dir)
+            recursive: If True, recursively list all files in the worktree
+            max_depth: Maximum recursion depth (security limit, default 10)
         """
         target = path or str(self.current_dir)
         
@@ -733,19 +735,73 @@ class CLIWrapper:
         
         # List directory contents
         try:
-            entries = []
-            for item in sorted(target_path.iterdir()):
-                prefix = "📁 " if item.is_dir() else "📄 "
-                entries.append(f"{prefix}{item.name}")
-            
-            output = "\n".join(entries) if entries else "(empty directory)"
+            if recursive:
+                # Recursive listing of entire worktree
+                entries = []
+                base_path = target_path
+                
+                def _list_recursive(dir_path: Path, current_depth: int = 0, prefix: str = "") -> None:
+                    """Recursively list directory contents with indentation."""
+                    if current_depth > max_depth:
+                        return
+                    
+                    try:
+                        # Get sorted items (directories first, then files)
+                        items = sorted(dir_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+                        
+                        for item in items:
+                            # Skip hidden files/directories (starting with .) except .git
+                            if item.name.startswith('.') and item.name != '.git':
+                                continue
+                            
+                            # Skip common build/cache directories for cleaner output
+                            if item.is_dir() and item.name in ('.git', '__pycache__', 'node_modules', '.venv', 'venv', 'dist', 'build', '.pytest_cache'):
+                                entries.append(f"{prefix}📁 {item.name}/ (skipped)")
+                                continue
+                            
+                            # Validate path is still within sandbox
+                            try:
+                                self.sentinel.validate_path(str(item))
+                            except SecurityError:
+                                # Path escaped sandbox - skip it
+                                continue
+                            
+                            if item.is_dir():
+                                entries.append(f"{prefix}📁 {item.name}/")
+                                # Recurse into subdirectory
+                                if current_depth < max_depth:
+                                    _list_recursive(item, current_depth + 1, prefix + "  ")
+                            else:
+                                # Format file with size if available
+                                try:
+                                    size = item.stat().st_size
+                                    size_str = self._format_size(size)
+                                    entries.append(f"{prefix}📄 {item.name} ({size_str})")
+                                except (OSError, PermissionError):
+                                    entries.append(f"{prefix}📄 {item.name}")
+                    except PermissionError:
+                        entries.append(f"{prefix}⚠️ Permission denied: {dir_path.name}/")
+                    except Exception as e:
+                        logger.warning(f"Error listing {dir_path}: {e}")
+                
+                _list_recursive(base_path)
+                output = "\n".join(entries) if entries else "(empty directory)"
+                output = f"📂 Worktree: {base_path.name}\n\n{output}"
+            else:
+                # Non-recursive listing (original behavior)
+                entries = []
+                for item in sorted(target_path.iterdir()):
+                    prefix = "📁 " if item.is_dir() else "📄 "
+                    entries.append(f"{prefix}{item.name}")
+                
+                output = "\n".join(entries) if entries else "(empty directory)"
             
             return CommandResult(
                 success=True,
                 stdout=output,
                 stderr="",
                 return_code=0,
-                command=f"ls {target}"
+                command=f"ls {'-R ' if recursive else ''}{target}"
             )
         except PermissionError:
             return CommandResult(
@@ -755,6 +811,14 @@ class CLIWrapper:
                 return_code=-1,
                 command=f"ls {target}"
             )
+    
+    def _format_size(self, size_bytes: int) -> str:
+        """Format file size in human-readable format."""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
     
     def read_file(self, path: str, max_lines: int = 100) -> CommandResult:
         """

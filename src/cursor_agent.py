@@ -73,11 +73,47 @@ except ImportError as e:
 
 # OCR Support for text extraction from screenshots
 OCR_AVAILABLE = False
+TESSERACT_ENGINE_AVAILABLE = False
 try:
     import pytesseract
     from PIL import Image
     OCR_AVAILABLE = True
     logger.info("OCR support available (pytesseract)")
+    
+    # Check if Tesseract OCR engine is actually available
+    try:
+        pytesseract.get_tesseract_version()
+        TESSERACT_ENGINE_AVAILABLE = True
+        logger.info("Tesseract OCR engine found and available")
+    except Exception as e:
+        TESSERACT_ENGINE_AVAILABLE = False
+        logger.warning(f"pytesseract installed but Tesseract engine not found: {e}")
+        logger.warning("Install Tesseract OCR engine:")
+        if sys.platform == "win32":
+            logger.warning("  Windows: https://github.com/UB-Mannheim/tesseract/wiki")
+        elif sys.platform == "darwin":
+            logger.warning("  macOS: brew install tesseract")
+        else:
+            logger.warning("  Linux: sudo apt install tesseract-ocr")
+    
+    # On Windows, patch subprocess.Popen to use CREATE_NO_WINDOW for pytesseract calls
+    # This prevents command prompt windows from appearing when OCR is used
+    if sys.platform == "win32":
+        _original_popen = subprocess.Popen
+        
+        def _patched_popen(*args, **kwargs):
+            """Patched Popen that adds CREATE_NO_WINDOW flag on Windows."""
+            # Only add flag if not already set
+            if 'creationflags' not in kwargs:
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            return _original_popen(*args, **kwargs)
+        
+        # Temporarily patch subprocess.Popen when pytesseract is imported
+        # Note: This affects all subprocess calls, but CREATE_NO_WINDOW is safe
+        # and only prevents console windows, which is what we want
+        subprocess.Popen = _patched_popen
+        logger.info("Patched subprocess.Popen to suppress command prompt windows on Windows")
+        
 except ImportError:
     logger.info("pytesseract not installed - OCR text extraction unavailable")
     logger.info("Install with: pip install pytesseract pillow")
@@ -558,7 +594,7 @@ class WindowManager:
     
     @staticmethod
     def _focus_cursor_window_windows(hwnd: Optional[int] = None) -> bool:
-        """Windows: Focus Cursor window using Win32 API."""
+        """Windows: Focus Cursor window using Win32 API and make it fullscreen."""
         if not WINDOWS_API_AVAILABLE:
             return True  # Assume focused
         
@@ -572,8 +608,15 @@ class WindowManager:
                 logger.warning("Cursor window not found")
                 return False
             
+            # Restore window if minimized
             SW_RESTORE = 9
             user32.ShowWindow(hwnd, SW_RESTORE)
+            time.sleep(0.1)
+            
+            # Maximize window to fullscreen
+            SW_MAXIMIZE = 3
+            user32.ShowWindow(hwnd, SW_MAXIMIZE)
+            time.sleep(0.1)
             
             foreground = user32.GetForegroundWindow()
             current_thread = ctypes.windll.kernel32.GetCurrentThreadId()
@@ -585,6 +628,7 @@ class WindowManager:
             user32.AttachThreadInput(current_thread, foreground_thread, False)
             
             time.sleep(0.3)
+            logger.info("Cursor window focused and maximized to fullscreen")
             return True
             
         except Exception as e:
@@ -593,7 +637,7 @@ class WindowManager:
     
     @staticmethod
     def _focus_cursor_window_macos() -> bool:
-        """macOS: Focus Cursor window using AppleScript."""
+        """macOS: Focus Cursor window using AppleScript and make it fullscreen."""
         try:
             script = '''
             tell application "Cursor"
@@ -602,6 +646,15 @@ class WindowManager:
             tell application "System Events"
                 tell process "Cursor"
                     set frontmost to true
+                    -- Maximize window to fullscreen
+                    try
+                        set value of attribute "AXFullscreen" of window 1 to true
+                    on error
+                        -- Fallback: zoom window (maximize)
+                        try
+                            set value of attribute "AXZoomButton" of window 1 to true
+                        end try
+                    end try
                 end tell
             end tell
             '''
@@ -611,6 +664,8 @@ class WindowManager:
             )
             
             time.sleep(0.3)
+            if result.returncode == 0:
+                logger.info("Cursor window focused and maximized to fullscreen")
             return result.returncode == 0
             
         except Exception as e:
@@ -619,7 +674,7 @@ class WindowManager:
     
     @staticmethod
     def _focus_cursor_window_linux(window_id: Optional[str] = None) -> bool:
-        """Linux: Focus Cursor window using xdotool or wmctrl."""
+        """Linux: Focus Cursor window using xdotool or wmctrl and make it fullscreen."""
         try:
             if window_id is None:
                 window_id = WindowManager._find_cursor_window_linux()
@@ -629,20 +684,42 @@ class WindowManager:
                 return False
             
             if XDOTOOL_AVAILABLE:
+                # Activate window
                 result = subprocess.run(
                     ['xdotool', 'windowactivate', '--sync', window_id],
                     capture_output=True, text=True, timeout=5
                 )
-                time.sleep(0.3)
-                return result.returncode == 0
+                if result.returncode == 0:
+                    # Maximize window to fullscreen
+                    subprocess.run(
+                        ['xdotool', 'windowstate', '--add', 'MAXIMIZED_VERT', window_id],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    subprocess.run(
+                        ['xdotool', 'windowstate', '--add', 'MAXIMIZED_HORZ', window_id],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    time.sleep(0.3)
+                    logger.info("Cursor window focused and maximized to fullscreen")
+                    return True
+                return False
                 
             elif WMCTRL_AVAILABLE:
+                # Activate and maximize window
                 result = subprocess.run(
                     ['wmctrl', '-i', '-a', window_id],
                     capture_output=True, text=True, timeout=5
                 )
-                time.sleep(0.3)
-                return result.returncode == 0
+                if result.returncode == 0:
+                    # Maximize window
+                    subprocess.run(
+                        ['wmctrl', '-i', '-r', window_id, '-b', 'add,maximized_vert,maximized_horz'],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    time.sleep(0.3)
+                    logger.info("Cursor window focused and maximized to fullscreen")
+                    return True
+                return False
             
             return False
             
@@ -702,6 +779,13 @@ class CursorAgentBridge:
         self.telecode_dir = self.workspace / self.TELECODE_DIR
         self.session = AgentSession(workspace=str(workspace))
         self.window_manager = WindowManager()
+        
+        # Lock to prevent multiple simultaneous Cursor launches
+        self._launch_lock = threading.Lock()
+        self._is_launching = False
+        
+        # Flag to track if stop was requested (for stopping progress updates)
+        self._stop_requested = False
         
         # Ensure .telecode directory exists
         self._ensure_telecode_dir()
@@ -961,11 +1045,17 @@ class CursorAgentBridge:
                 return True
             
             # Open Cursor with the workspace
+            # On Windows, use CREATE_NO_WINDOW to prevent command prompt windows from appearing
+            creation_flags = 0
+            if sys.platform == "win32":
+                creation_flags = subprocess.CREATE_NO_WINDOW
+            
             subprocess.Popen(
                 [self.cursor_path, str(self.workspace)],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                cwd=str(self.workspace)
+                cwd=str(self.workspace),
+                creationflags=creation_flags
             )
             
             logger.info(f"Opened Cursor with workspace: {self.workspace}")
@@ -1086,97 +1176,146 @@ class CursorAgentBridge:
             )
         
         # Step 2: If Cursor is not running, start it
-        if not status["is_running"]:
-            await report_status(f"🚀 Launching Cursor for `{workspace_name}`...")
-            
-            if not self.cursor_path:
-                await report_status("❌ Cursor CLI not found", True)
-                return AgentResult(
-                    success=False,
-                    message="Cursor CLI not found",
-                    error="Please install Cursor and ensure 'cursor' is in your PATH"
-                )
-            
-            try:
-                subprocess.Popen(
-                    [self.cursor_path, str(self.workspace)],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    cwd=str(self.workspace)
-                )
-                logger.info(f"Launched Cursor for workspace: {self.workspace}")
-            except Exception as e:
-                await report_status(f"❌ Failed to launch Cursor: {e}", True)
-                return AgentResult(
-                    success=False,
-                    message="Failed to launch Cursor",
-                    error=str(e)
-                )
-        elif not status["workspace_open"]:
-            # Cursor running but different workspace - open this workspace
-            await report_status(f"📂 Opening `{workspace_name}` in Cursor...")
-            
-            try:
-                subprocess.Popen(
-                    [self.cursor_path, str(self.workspace)],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    cwd=str(self.workspace)
-                )
-            except Exception as e:
-                await report_status(f"❌ Failed to open workspace: {e}", True)
-                return AgentResult(
-                    success=False,
-                    message="Failed to open workspace in Cursor",
-                    error=str(e)
-                )
-        
-        # Step 3: Wait for Cursor to be ready
-        await report_status(f"⏳ Waiting for Cursor to open `{workspace_name}`...")
-        
-        start_time = time.time()
-        dots = 0
-        last_status = ""
-        
-        while time.time() - start_time < timeout:
-            # Check status
+        # Use lock to prevent multiple simultaneous launches
+        with self._launch_lock:
+            # Double-check status after acquiring lock (another thread might have launched it)
             status = self.check_cursor_status()
             
             if status["workspace_open"]:
-                await report_status(f"✅ Cursor ready with `{workspace_name}`", True)
+                await report_status(f"✅ Cursor already open with `{workspace_name}`", True)
                 return AgentResult(
                     success=True,
-                    message="Cursor is ready!",
+                    message="Cursor is already open",
                     data=status
                 )
             
-            # Show progress with animated dots
-            dots = (dots % 3) + 1
-            elapsed = int(time.time() - start_time)
+            if self._is_launching:
+                # Another launch is in progress, wait for it
+                await report_status(f"⏳ Cursor launch already in progress...")
+                # Wait a bit and check again
+                await asyncio.sleep(2.0)
+                status = self.check_cursor_status()
+                if status["workspace_open"]:
+                    await report_status(f"✅ Cursor is now open with `{workspace_name}`", True)
+                    return AgentResult(
+                        success=True,
+                        message="Cursor is now open",
+                        data=status
+                    )
             
-            current_status = status.get("message", "Loading...")
-            if current_status != last_status:
-                await report_status(f"⏳ {current_status} ({elapsed}s){'.' * dots}")
-                last_status = current_status
+            if not status["is_running"]:
+                self._is_launching = True
+                try:
+                    await report_status(f"🚀 Launching Cursor for `{workspace_name}`...")
+                    
+                    if not self.cursor_path:
+                        await report_status("❌ Cursor CLI not found", True)
+                        return AgentResult(
+                            success=False,
+                            message="Cursor CLI not found",
+                            error="Please install Cursor and ensure 'cursor' is in your PATH"
+                        )
+                    
+                    # On Windows, use CREATE_NO_WINDOW to prevent command prompt windows from appearing
+                    creation_flags = 0
+                    if sys.platform == "win32":
+                        creation_flags = subprocess.CREATE_NO_WINDOW
+                    
+                    subprocess.Popen(
+                        [self.cursor_path, str(self.workspace)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        cwd=str(self.workspace),
+                        creationflags=creation_flags
+                    )
+                    logger.info(f"Launched Cursor for workspace: {self.workspace}")
+                except Exception as e:
+                    self._is_launching = False
+                    await report_status(f"❌ Failed to launch Cursor: {e}", True)
+                    return AgentResult(
+                        success=False,
+                        message="Failed to launch Cursor",
+                        error=str(e)
+                    )
+            elif not status["workspace_open"]:
+                # Cursor running but different workspace - open this workspace
+                self._is_launching = True
+                try:
+                    await report_status(f"📂 Opening `{workspace_name}` in Cursor...")
+                    
+                    # On Windows, use CREATE_NO_WINDOW to prevent command prompt windows from appearing
+                    creation_flags = 0
+                    if sys.platform == "win32":
+                        creation_flags = subprocess.CREATE_NO_WINDOW
+                    
+                    subprocess.Popen(
+                        [self.cursor_path, str(self.workspace)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        cwd=str(self.workspace),
+                        creationflags=creation_flags
+                    )
+                except Exception as e:
+                    self._is_launching = False
+                    await report_status(f"❌ Failed to open workspace: {e}", True)
+                    return AgentResult(
+                        success=False,
+                        message="Failed to open workspace in Cursor",
+                        error=str(e)
+                    )
+        
+        # Step 3: Wait for Cursor to be ready
+        try:
+            await report_status(f"⏳ Waiting for Cursor to open `{workspace_name}`...")
             
-            # Small sleep to avoid hammering CPU
-            await asyncio.sleep(poll_interval)
-        
-        # Timeout reached
-        final_status = self.check_cursor_status()
-        
-        if final_status["has_window"]:
-            # Cursor is open but maybe different workspace
-            await report_status(
-                f"⚠️ Cursor is open but workspace `{workspace_name}` may not be active. "
-                f"Please switch to it manually.",
-                True
-            )
-            return AgentResult(
-                success=True,
-                message="Cursor opened (please verify workspace)",
-                data=final_status
-            )
+            start_time = time.time()
+            dots = 0
+            last_status = ""
+            
+            while time.time() - start_time < timeout:
+                # Check status
+                status = self.check_cursor_status()
+                
+                if status["workspace_open"]:
+                    self._is_launching = False  # Clear launch flag on success
+                    await report_status(f"✅ Cursor ready with `{workspace_name}`", True)
+                    return AgentResult(
+                        success=True,
+                        message="Cursor is ready!",
+                        data=status
+                    )
+                
+                # Show progress with animated dots
+                dots = (dots % 3) + 1
+                elapsed = int(time.time() - start_time)
+                
+                current_status = status.get("message", "Loading...")
+                if current_status != last_status:
+                    await report_status(f"⏳ {current_status} ({elapsed}s){'.' * dots}")
+                    last_status = current_status
+                
+                # Small sleep to avoid hammering CPU
+                await asyncio.sleep(poll_interval)
+            
+            # Timeout reached
+            self._is_launching = False  # Clear launch flag on timeout
+            final_status = self.check_cursor_status()
+            
+            if final_status["has_window"]:
+                # Cursor is open but maybe different workspace
+                await report_status(
+                    f"⚠️ Cursor is open but workspace `{workspace_name}` may not be active. "
+                    f"Please switch to it manually.",
+                    True
+                )
+                return AgentResult(
+                    success=True,
+                    message="Cursor opened (please verify workspace)",
+                    data=final_status
+                )
+        finally:
+            # Always clear the launch flag when done
+            self._is_launching = False
         
         await report_status(f"❌ Timeout waiting for Cursor to open", True)
         return AgentResult(
@@ -1806,9 +1945,9 @@ class CursorAgentBridge:
                     # Fall through to standard method
             
             # Standard screenshot method (when not locked or as fallback)
-            # Focus Cursor window first for better screenshot
+            # Focus Cursor window first and make it fullscreen for better screenshot
             WindowManager.focus_cursor_window()
-            time.sleep(0.3)
+            time.sleep(0.5)  # Give extra time for fullscreen transition
             
             # Take screenshot
             screenshot = pyautogui.screenshot()
@@ -1844,6 +1983,26 @@ class CursorAgentBridge:
                 success=False,
                 message="OCR not available",
                 error="Install pytesseract and Tesseract OCR engine. See: https://github.com/tesseract-ocr/tesseract"
+            )
+        
+        if not TESSERACT_ENGINE_AVAILABLE:
+            # Provide platform-specific installation instructions
+            if sys.platform == "win32":
+                install_url = "https://github.com/UB-Mannheim/tesseract/wiki"
+                install_cmd = "Download installer from GitHub"
+            elif sys.platform == "darwin":
+                install_url = "https://github.com/tesseract-ocr/tesseract"
+                install_cmd = "brew install tesseract"
+            else:
+                install_url = "https://github.com/tesseract-ocr/tesseract"
+                install_cmd = "sudo apt install tesseract-ocr"
+            
+            return AgentResult(
+                success=False,
+                message="Tesseract OCR engine not found",
+                error=f"Tesseract OCR engine is not installed or not in PATH.\n\n"
+                      f"Install with: {install_cmd}\n"
+                      f"See: {install_url}"
             )
         
         try:
@@ -2098,10 +2257,10 @@ class CursorAgentBridge:
         status_callback: Optional[callable] = None,
         model: Optional[str] = None,
         mode: Optional[str] = None,
-        timeout: float = 300.0,
-        poll_interval: float = 3.0,
-        stable_threshold: int = 10,
-        min_processing_time: float = 15.0
+        timeout: float = 3600.0,  # Maximum time to wait for AI completion (1 hour default - monitoring stops but AI continues)
+        poll_interval: float = 5.0,  # How often to check for file changes (every 5 seconds)
+        stable_threshold: int = 50,  # Number of consecutive stable polls needed (50 polls = 250s of no changes)
+        min_processing_time: float = 30.0  # Minimum time before allowing completion detection (prevents false positives)
     ) -> AgentResult:
         """
         Send a prompt to Cursor and wait for AI to complete processing.
@@ -2121,9 +2280,9 @@ class CursorAgentBridge:
             status_callback: Async callback(message: str, is_complete: bool, screenshot_path: Optional[Path])
             model: Optional model ID
             mode: One of "agent", "chat"
-            timeout: Max time to wait for completion (seconds) - default 5 mins
+            timeout: Max time to wait for completion (seconds) - default 1 hour (monitoring stops but AI continues)
             poll_interval: Time between status checks (seconds)
-            stable_threshold: Number of stable polls before considering done (10 = 30s of stability)
+            stable_threshold: Number of stable polls before considering done (50 = 250s of stability)
             min_processing_time: Minimum seconds before allowing completion detection
             
         Returns:
@@ -2147,6 +2306,9 @@ class CursorAgentBridge:
                         asyncio.create_task(status_callback(message, is_complete, screenshot_path))
                 except Exception as e:
                     logger.warning(f"Status callback error: {e}")
+        
+        # Reset stop flag at the start of each prompt
+        self._stop_requested = False
         
         # Step 1: Send the prompt
         logger.info(f"[AI_PROMPT] Sending prompt to Cursor: {prompt[:100]}...")
@@ -2264,6 +2426,11 @@ class CursorAgentBridge:
         screenshot_count = 0       # Track total screenshots sent
         sent_initial_screenshot = False  # Track if we sent the first quick screenshot
         
+        # Track recent poll history to detect if lines are still changing
+        # This prevents premature "completed" messages when changes are intermittent
+        poll_history = []  # List of (files_set, diff_size) tuples from recent polls
+        MAX_HISTORY_SIZE = 5  # Keep last 5 polls to detect ongoing changes
+        
         # Screenshot intervals: every 60s for first 10 min, then every 300s (5 min)
         INITIAL_SCREENSHOT_TIME = 8        # Send first screenshot at 8 seconds
         SCREENSHOT_INTERVAL_INITIAL = 60   # 1 minute for first 10 min
@@ -2272,6 +2439,46 @@ class CursorAgentBridge:
         
         while time.time() - start_time < timeout:
             elapsed = int(time.time() - start_time)
+            
+            # Check if stop was requested - if so, stop progress updates and show completion
+            if self._stop_requested:
+                logger.info(f"[AI_PROMPT] Stop requested - stopping progress updates and showing completion message")
+                
+                # Calculate final delta values (changes from this prompt only)
+                final_files_changed = len(last_files - baseline_files)
+                final_lines_changed = max(0, last_diff_size - baseline_diff_size)
+                
+                # Update session state
+                self.session.state = AgentState.CHANGES_PENDING
+                self.session.changes_detected = True
+                self.session.pending_files = list(last_files - baseline_files) if (last_files - baseline_files) else list(last_files)
+                self._save_session()
+                
+                # Take screenshot (non-blocking)
+                screenshot_path = await asyncio.to_thread(self.capture_screenshot)
+                
+                # Show completion message
+                await report_status(
+                    f"✅ Cursor AI completed! ({final_files_changed} files, ~{final_lines_changed} lines in {elapsed}s)",
+                    True,
+                    screenshot_path
+                )
+                
+                return AgentResult(
+                    success=True,
+                    message="AI stopped by user",
+                    data={
+                        "status": "completed",
+                        "files_changed": final_files_changed,
+                        "lines_changed": final_lines_changed,
+                        "files": list(last_files - baseline_files) if (last_files - baseline_files) else list(last_files),
+                        "elapsed_seconds": elapsed,
+                        "screenshot": str(screenshot_path) if screenshot_path else None,
+                        "mode": effective_mode,
+                        "agent_id": agent_id,
+                        "stopped_by_user": True
+                    }
+                )
             
             # Check for file changes via git - track CONTENT changes, not just file list
             try:
@@ -2366,10 +2573,28 @@ class CursorAgentBridge:
                 files_changed_count = len(files_changed_from_prompt)
                 lines_changed_count = max(0, current_diff_size - baseline_diff_size)
                 
-                # Check if CONTENT changed (diff size grew) OR new files appeared
-                content_changed = (current_diff_size != last_diff_size) or (current_files != last_files)
+                # Add current poll result to history
+                poll_history.append((current_files.copy(), current_diff_size))
+                if len(poll_history) > MAX_HISTORY_SIZE:
+                    poll_history.pop(0)  # Keep only recent polls
                 
-                if content_changed:
+                # Check if CONTENT changed by comparing with last poll
+                # This detects immediate changes between consecutive polls
+                content_changed_immediate = (current_diff_size != last_diff_size) or (current_files != last_files)
+                
+                # Check if lines are STILL changing by examining recent poll history
+                # If any poll in recent history shows different values, lines are still changing
+                lines_still_changing = False
+                if len(poll_history) >= 2:
+                    # Compare all recent polls - if any differ, changes are ongoing
+                    first_files, first_diff = poll_history[0]
+                    for poll_files, poll_diff in poll_history[1:]:
+                        if (poll_files != first_files) or (poll_diff != first_diff):
+                            lines_still_changing = True
+                            break
+                
+                # If lines changed in this poll OR are still changing based on history, reset stability
+                if content_changed_immediate or lines_still_changing:
                     # Content is still changing - AI is actively working
                     if current_files != last_files:
                         new_files = current_files - last_files
@@ -2377,28 +2602,53 @@ class CursorAgentBridge:
                             logger.info(f"[AI_PROMPT] New files: {new_files}")
                     if current_diff_size != last_diff_size:
                         logger.info(f"[AI_PROMPT] Diff size changed: {last_diff_size} -> {current_diff_size} lines")
+                    if lines_still_changing and not content_changed_immediate:
+                        logger.info(f"[AI_PROMPT] Lines still changing (detected via poll history)")
                     
                     await report_status(f"📝 AI working... {files_changed_count} files, ~{lines_changed_count} lines ({elapsed}s)")
                     last_files = current_files
                     last_diff_size = current_diff_size
                     stable_count = 0
+                    # Clear history when we detect changes to start fresh tracking
+                    poll_history = [(current_files.copy(), current_diff_size)]
                 else:
-                    # No content changes - increment stable count
-                    stable_count += 1
-                    if stable_count % 5 == 0:  # Log every 5 stable polls
-                        logger.info(f"[AI_PROMPT] Content stable: {stable_count}/{stable_threshold} polls, {current_diff_size} lines, {elapsed}s")
+                    # No content changes detected in this poll AND history shows stability
+                    # Update tracking variables for next poll comparison (even though values are same)
+                    last_files = current_files
+                    last_diff_size = current_diff_size
+                    
+                    # Only increment stable count if we have enough history to be confident
+                    if len(poll_history) >= 2:
+                        stable_count += 1
+                        if stable_count % 5 == 0:  # Log every 5 stable polls
+                            logger.info(f"[AI_PROMPT] Content stable: {stable_count}/{stable_threshold} polls, {current_diff_size} lines, {elapsed}s (history verified)")
+                    else:
+                        # Not enough history yet - don't count as stable, but don't reset either
+                        logger.debug(f"[AI_PROMPT] Building poll history: {len(poll_history)}/{MAX_HISTORY_SIZE} polls")
                 
                 # Calculate stability time in seconds
                 stability_time = stable_count * poll_interval
                 
+                # CRITICAL: Only show "completed" if:
+                # 1. Lines have stopped changing (verified by poll history)
+                # 2. Stable count meets threshold (x consecutive polls with no changes)
+                # 3. Minimum processing time has passed
+                # 4. We have changes to report
+                # 
+                # Additional safety: Ensure poll history confirms stability
+                history_confirms_stability = len(poll_history) >= MAX_HISTORY_SIZE and not lines_still_changing
+                
                 # If we have changes and CONTENT is stable for threshold polls AND minimum time passed
-                # We need BOTH: enough stable polls AND minimum processing time
+                # AND history confirms stability (lines have truly stopped changing)
+                # We need ALL: enough stable polls AND minimum processing time AND history verification
                 # Use delta values (changes from this prompt only) for completion check
                 if (stable_count >= stable_threshold and 
+                    history_confirms_stability and
                     (files_changed_count > 0 or lines_changed_count > 0) and 
                     elapsed >= min_processing_time):
                     # AI appears to be done! Content hasn't changed for stability_time seconds
-                    logger.info(f"[AI_PROMPT] ✅ AI COMPLETED! Content stable for {stability_time}s")
+                    # AND poll history confirms lines have stopped changing
+                    logger.info(f"[AI_PROMPT] ✅ AI COMPLETED! Content stable for {stability_time}s (verified via {len(poll_history)} poll history)")
                     logger.info(f"[AI_PROMPT]    Files: {files_changed_count} (from this prompt), Lines: ~{lines_changed_count}, Elapsed: {elapsed}s")
                     self.session.state = AgentState.CHANGES_PENDING
                     self.session.changes_detected = True
@@ -2430,10 +2680,17 @@ class CursorAgentBridge:
                         }
                     )
                 elif stable_count >= stable_threshold and files_changed_count > 0:
-                    # Files are stable but haven't hit min processing time yet
-                    remaining = int(min_processing_time - elapsed)
-                    if remaining > 0:
-                        await report_status(f"📝 AI working... {files_changed_count} files ({elapsed}s, verifying...)")
+                    # Files appear stable but we need to verify:
+                    # - Either haven't hit min processing time yet, OR
+                    # - Poll history doesn't confirm stability yet
+                    if not history_confirms_stability:
+                        # History not ready - still building confidence
+                        await report_status(f"📝 AI working... {files_changed_count} files, ~{lines_changed_count} lines ({elapsed}s, verifying stability...)")
+                    else:
+                        # History confirms stability but min time not met
+                        remaining = int(min_processing_time - elapsed)
+                        if remaining > 0:
+                            await report_status(f"📝 AI working... {files_changed_count} files, ~{lines_changed_count} lines ({elapsed}s, verifying...)")
                 
                 # If no changes after a long while, AI might be waiting or stuck
                 # Only trigger this after 120s with absolutely no file changes
@@ -2467,7 +2724,8 @@ class CursorAgentBridge:
                     )
                 
                 # Send initial screenshot at 10 seconds to confirm AI is working
-                if not sent_initial_screenshot and elapsed >= INITIAL_SCREENSHOT_TIME:
+                # Skip if stop was requested
+                if not self._stop_requested and not sent_initial_screenshot and elapsed >= INITIAL_SCREENSHOT_TIME:
                     sent_initial_screenshot = True
                     screenshot_count += 1
                     last_screenshot_time = elapsed
@@ -2489,7 +2747,8 @@ class CursorAgentBridge:
                 
                 # Periodic screenshot updates while AI is working
                 # Every 1 minute for first 10 min, then every 5 min after that
-                elif elapsed > INITIAL_SCREENSHOT_TIME:
+                # Skip if stop was requested
+                elif not self._stop_requested and elapsed > INITIAL_SCREENSHOT_TIME:
                     # Determine current screenshot interval
                     if elapsed <= INITIAL_PERIOD:
                         current_interval = SCREENSHOT_INTERVAL_INITIAL
@@ -3000,8 +3259,8 @@ class CursorAgentBridge:
         """
         Reject/Undo changes using Cursor's UI automation.
         
-        Uses Escape key to dismiss/reject proposed changes in both agent and chat modes.
-        This is the standard way to reject changes in Cursor's interface.
+        Locates and clicks "Undo" or "Undo All" buttons in Cursor's UI using OCR.
+        Requires Tesseract OCR to be installed and available.
         
         Returns:
             AgentResult with success status
@@ -3031,33 +3290,140 @@ class CursorAgentBridge:
             current_mode = self.session.prompt_mode or "agent"
             logger.info(f"[REJECT] Current mode: {current_mode}")
             
-            # Both chat and agent mode: Press Escape to dismiss/reject proposed changes
-            # Escape is the standard way to reject/cancel changes in Cursor
-            logger.info("[REJECT] Pressing Escape to reject changes...")
-            pyautogui.press('escape')
-            time.sleep(0.3)
-            pyautogui.press('escape')  # Press twice to be sure
-            time.sleep(0.2)
-            shortcut_used = "Escape"
-            
-            logger.info(f"[REJECT] Completed: {shortcut_used}")
-            
-            # Update session
-            self.session.state = AgentState.IDLE
-            self.session.changes_detected = False
-            self._save_session()
-            
-            self._add_to_history(self.session.current_prompt, "reject", f"rejected via {shortcut_used}")
-            
-            return AgentResult(
-                success=True,
-                message=f"Changes rejected in Cursor ({shortcut_used})!",
-                data={
-                    "method": "cursor_automation",
-                    "mode": current_mode,
-                    "shortcut": shortcut_used
-                }
-            )
+            # Locate and click "Undo" or "Undo All" button using OCR
+            if OCR_AVAILABLE and TESSERACT_ENGINE_AVAILABLE:
+                logger.info("[REJECT] Attempting to locate Undo/Undo All button using OCR...")
+                try:
+                    # Take a screenshot
+                    full_screenshot = pyautogui.screenshot()
+                    screen_width, screen_height = pyautogui.size()
+                    
+                    # Cursor's completion UI typically appears in center/lower area
+                    # Search in the bottom 40% of screen where completion messages appear
+                    ui_crop = full_screenshot.crop((
+                        0,
+                        int(screen_height * 0.4),  # Start from 40% down
+                        screen_width,
+                        screen_height  # To bottom
+                    ))
+                    
+                    # Run OCR on the UI area
+                    custom_config = r'--oem 3 --psm 6 -l eng'
+                    ocr_data = pytesseract.image_to_data(ui_crop, config=custom_config, output_type=pytesseract.Output.DICT)
+                    
+                    # Search patterns for Undo buttons
+                    undo_patterns = ["Undo All", "Undo", "undo all", "undo"]
+                    
+                    best_match = None
+                    best_confidence = 0
+                    button_type = None
+                    
+                    # Look for button text
+                    for i, word in enumerate(ocr_data.get('text', [])):
+                        if word and word.strip():
+                            word_text = word.strip()
+                            word_lower = word_text.lower()
+                            confidence = ocr_data.get('conf', [0])[i] if 'conf' in ocr_data else 0
+                            
+                            # Check if this word matches any undo pattern
+                            for pattern in undo_patterns:
+                                pattern_lower = pattern.lower()
+                                # Check for exact match or contains match
+                                if (pattern_lower == word_lower or 
+                                    pattern_lower in word_lower or 
+                                    word_lower in pattern_lower):
+                                    
+                                    # Found potential button - get coordinates
+                                    x = ocr_data['left'][i]
+                                    y = ocr_data['top'][i]
+                                    w = ocr_data['width'][i]
+                                    h = ocr_data['height'][i]
+                                    
+                                    # Skip if coordinates are invalid
+                                    if x < 0 or y < 0 or w <= 0 or h <= 0:
+                                        continue
+                                    
+                                    # Prefer "Undo All" over "Undo" if both found
+                                    is_undo_all = "all" in word_lower
+                                    priority = 2 if is_undo_all else 1
+                                    
+                                    # Get current best priority
+                                    current_best_priority = 2 if (best_match and "all" in best_match.get('word', '').lower()) else 1
+                                    
+                                    # Prefer matches with higher priority, or same priority with higher confidence
+                                    if (best_match is None and confidence > 0) or \
+                                       (priority > current_best_priority) or \
+                                       (priority == current_best_priority and confidence > best_confidence):
+                                        best_match = {
+                                            'x': x,
+                                            'y': y,
+                                            'w': w,
+                                            'h': h,
+                                            'word': word_text,
+                                            'confidence': confidence
+                                        }
+                                        best_confidence = confidence
+                                        button_type = "Undo All" if is_undo_all else "Undo"
+                    
+                    if best_match:
+                        # Calculate center of the button
+                        center_x = best_match['x'] + (best_match['w'] // 2)
+                        center_y = best_match['y'] + (best_match['h'] // 2)
+                        
+                        # Map coordinates from cropped image to screen coordinates
+                        # The crop starts at y = screen_height * 0.4
+                        click_x = max(10, min(center_x, screen_width - 10))
+                        click_y = max(10, min(int(screen_height * 0.4) + center_y, screen_height - 10))
+                        
+                        logger.info(f"[REJECT] Found '{best_match['word']}' button at ({click_x}, {click_y}), clicking...")
+                        
+                        # Click on the button
+                        pyautogui.click(click_x, click_y)
+                        time.sleep(0.5)
+                        
+                        method_used = "button_click"
+                        shortcut_used = button_type
+                        logger.info(f"[REJECT] Successfully clicked {button_type} button")
+                        
+                        # Update session
+                        self.session.state = AgentState.IDLE
+                        self.session.changes_detected = False
+                        self._save_session()
+                        
+                        self._add_to_history(self.session.current_prompt, "reject", f"rejected via {method_used} ({shortcut_used})")
+                        
+                        return AgentResult(
+                            success=True,
+                            message=f"Changes rejected in Cursor ({shortcut_used})!",
+                            data={
+                                "method": method_used,
+                                "mode": current_mode,
+                                "shortcut": shortcut_used
+                            }
+                        )
+                    else:
+                        logger.error("[REJECT] Could not find Undo/Undo All button via OCR")
+                        return AgentResult(
+                            success=False,
+                            message="Could not locate Undo/Undo All button",
+                            error="Button not found in Cursor UI. Make sure the AI completion message is visible."
+                        )
+                        
+                except Exception as e:
+                    logger.error(f"[REJECT] OCR-based button detection failed: {e}")
+                    return AgentResult(
+                        success=False,
+                        message="Failed to detect Undo button",
+                        error=f"OCR detection error: {str(e)}"
+                    )
+            else:
+                # OCR not available
+                logger.error("[REJECT] OCR not available - cannot locate Undo button")
+                return AgentResult(
+                    success=False,
+                    message="OCR not available",
+                    error="Tesseract OCR is required to locate and click Undo buttons. Install with: pip install pytesseract and install Tesseract OCR engine."
+                )
             
         except Exception as e:
             logger.error(f"[REJECT] Failed: {e}")
@@ -3177,6 +3543,10 @@ class CursorAgentBridge:
             logger.info(f"[STOP] Pressing {shortcut_display} to stop generation...")
             pyautogui.hotkey(MODIFIER_KEY, 'shift', 'backspace')
             time.sleep(0.3)
+            
+            # Set stop flag to stop progress updates and trigger completion message
+            self._stop_requested = True
+            logger.info("[STOP] Stop flag set - progress updates will stop and completion message will be shown")
             
             # Update session state
             self.session.state = AgentState.IDLE

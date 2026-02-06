@@ -114,12 +114,16 @@ Hello world     → AI prompt!
 | Quick model switch | `/model opus` or `/model haiku` |
 | List models | `/models` |
 | List files | `/ls` |
+| List worktree | `/ls -R` |
 | Switch sandbox | `/sandbox` or `/sandboxes` |
 | Read file | `/read [file]` |
 | Current path | `/pwd` |
 | **New project** | `/create` |
 | **Open Cursor** | `/cursor` or `/cursor open` |
+| Cursor status | `/cursor status` |
 | System info | `/info` |
+| Set PIN (Win) | `/pin set <pin>` |
+| Cancel operation | `/cancel` |
 
 > **Note:** `/revert` requires `CONFIRM` argument to prevent accidents.
 
